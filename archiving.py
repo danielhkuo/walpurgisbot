@@ -36,7 +36,7 @@ class ArchivingCog(commands.Cog):
         if not match:
             # Ping Johan for a day number if none is found
             await message.channel.send(
-                f"<@{self.JOHAN_USER_ID}> I didn't find a day number on your recent post (message ID: {message.id}). Please give me one! >w<"
+                f"<@{self.JOHAN_USER_ID}> Is that a Daily Johan?? I didn't find a day number on that... please give me one! (⌒_⌒;)"
             )
 
             def check_n(m):
@@ -50,7 +50,7 @@ class ArchivingCog(commands.Cog):
                 if match_reply:
                     day_number = int(match_reply.group(1))
                 else:
-                    await message.channel.send("I- I'm sowwy!!! I couldn't parse a day number from your reply.")
+                    await message.channel.send("I- I'm sowwy!!! I couldn't parse a day number from your reply (￣▽￣*)ゞ")
                     return
             except asyncio.TimeoutError:
                 await message.channel.send("No response received from Johan.")
@@ -59,7 +59,7 @@ class ArchivingCog(commands.Cog):
             try:
                 day_number = int(match.group(1) or match.group(2))
             except ValueError:
-                await message.channel.send(f"Oh no oopsies! I failed to parse a valid day number from message {message.id}.")
+                await message.channel.send(f"Oh no oopsies! (⁄ ⁄•⁄ω⁄•⁄ ⁄) I failed to parse a valid day number from message {message.id}.")
                 return
 
         # If multiple numbers found in the original message, request manual submission
@@ -97,7 +97,7 @@ class ArchivingCog(commands.Cog):
         expected_next = latest_day + 1
         if day_number != expected_next:
             await message.channel.send(
-                "I- I don't think this is the next daily johan number... >w< Please manually submit to verify pookie!"
+                "I- I don't think this is the next daily johan number... (*/▽＼*) Please manually submit to verify pookie!"
             )
             return
 
