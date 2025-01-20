@@ -105,7 +105,7 @@ class ArchivingCog(commands.Cog):
         media_url = message.attachments[0].url
         try:
             archive_daily_johan_db(day_number, message, [media_url], confirmed=True)
-            await message.channel.send(f"Automatically archived Day {day_number} for Johan from message {message.id}.")
+            await message.channel.send(f"I automatically archived Day {day_number} for you!")
         except ValueError as ve:
             await message.channel.send(str(ve))
         except Exception as e:
