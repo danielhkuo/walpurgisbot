@@ -59,7 +59,20 @@ This bot automates the archiving, management, and verification of daily image po
 
 ## Setup and Configuration
 
-1. **Environment Variables**:
+**Docker Compose Option**
+```yaml
+version: '3'
+services:
+  walpurgisbot:
+    image: ghcr.io/danielhkuo/walpurgisbot:latest
+    environment:
+      - TOKEN=your_discord_bot_token
+      - DEFAULT_CHANNEL_ID=your_default_channel_id
+    restart: unless-stopped
+```
+
+
+1. **Environment Variables (for use in development)**:
    - Use a `.env` file to store sensitive information like the bot token.
    - Example:
      ```
@@ -69,7 +82,7 @@ This bot automates the archiving, management, and verification of daily image po
    - The bot uses an SQLite database (`daily_johans.db`) to store archived entries.
    - The database is initialized automatically upon bot startup.
 
-3. **User and Channel IDs**:
+3. **User and Channel IDs (Must change for use in a different server!)**:
    - Update constants like `JOHAN_USER_ID` and `CHECK_CHANNEL_ID` in the code with the appropriate Discord user and channel IDs.
 
 4. **Loading Cogs**:

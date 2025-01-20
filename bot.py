@@ -128,6 +128,7 @@ async def load_cogs():
     await bot.load_extension("archiving")
     await bot.load_extension("deletion")
     await bot.load_extension("status")
+    await bot.load_extension("fun")
 
 async def main():
     async with bot:
