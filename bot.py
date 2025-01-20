@@ -3,6 +3,7 @@ from discord.ext import commands
 import asyncio
 from dotenv import load_dotenv
 import os
+import re
 
 from config import JOHAN_USER_ID  # Import shared constants if needed
 
@@ -30,7 +31,68 @@ async def on_ready():
 # Context Menu: Archive Daily Johan
 @bot.tree.context_menu(name="Archive Daily Johan")
 async def archive_daily_johan_context_menu(interaction: discord.Interaction, message: discord.Message):
-    await interaction.response.send_message("Please enter the day number(s) for this Daily Johan (separated by spaces or commas).", ephemeral=True)
+    # Attempt automatic scanning for day numbers in the message content
+    numbers_found = re.findall(r"\d+", message.content)
+    media_attachments = message.attachments
+    media_urls = [attachment.url for attachment in media_attachments]
+
+    if not media_urls:
+        await interaction.response.send_message("No media found in the selected message.", ephemeral=True)
+        return
+
+    # If numbers are found and they match the number of attachments,
+    # proceed with automatic assignment.
+    if numbers_found:
+        day_numbers = [int(num) for num in numbers_found]
+
+        # If there's a one-to-one match between numbers and attachments:
+        if len(day_numbers) == len(media_urls):
+            # Archive each media to corresponding day
+            for day, media_url in zip(day_numbers, media_urls):
+                existing_message = get_existing_message_for_day(day)
+                if existing_message and str(existing_message[0]) != str(message.id):
+                    await interaction.response.send_message(
+                        f"Day {day} already has a different Daily Johan. Please resolve duplicates manually.",
+                        ephemeral=True
+                    )
+                    return
+                try:
+                    archive_daily_johan_db(day, message, [media_url], confirmed=True)
+                except ValueError as ve:
+                    await interaction.response.send_message(str(ve), ephemeral=True)
+                    return
+            await interaction.response.send_message(
+                f"Automatically archived message {message.id} for days: {', '.join(map(str, day_numbers))} with one media per day.",
+                ephemeral=True
+            )
+            return
+        # If one day number found and multiple attachments exist (<= 3):
+        elif len(day_numbers) == 1 and len(media_urls) <= 3:
+            day = day_numbers[0]
+            # Check for existing media as before...
+            try:
+                archive_daily_johan_db(day, message, media_urls, confirmed=True)
+                await interaction.response.send_message(
+                    f"Automatically archived message {message.id} for day {day} with {len(media_urls)} media attachments.",
+                    ephemeral=True
+                )
+            except ValueError as ve:
+                await interaction.response.send_message(str(ve), ephemeral=True)
+            return
+        # If multiple numbers found but don't match attachments count or other issues arise:
+        else:
+            await interaction.response.send_message(
+                "Mismatch between the detected numbers and the number of attachments or multiple numbers detected. "
+                "Please manually input the correct day number(s).",
+                ephemeral=True
+            )
+            # Fall through to manual input prompt below.
+
+    # Fallback: Prompt for manual input if automatic scanning didn't succeed or encountered issues.
+    await interaction.response.send_message(
+        "Automatic scanning was inconclusive. Please enter the day number(s) for this Daily Johan (separated by spaces or commas).",
+        ephemeral=True
+    )
 
     def check(m):
         return m.author == interaction.user and m.channel == interaction.channel
@@ -42,19 +104,28 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
         # Parse input numbers separated by spaces or commas
         numbers_list = [int(x) for x in re.split(r'[\s,]+', user_input) if x.isdigit()]
 
-        media_attachments = message.attachments
-        media_urls = [attachment.url for attachment in media_attachments]
-
-        if not media_urls:
-            await interaction.followup.send("No media found in the selected message.", ephemeral=True)
+        if not numbers_list:
+            await interaction.followup.send("No valid day numbers provided.", ephemeral=True)
             await response.delete()
             return
 
-        # Assignment logic
+        # Recalculate attachments and media URLs in case message context is needed
+        media_attachments = message.attachments
+        media_urls = [attachment.url for attachment in media_attachments]
+
+        # Check if count of numbers matches number of attachments
+        if len(numbers_list) != len(media_urls):
+            await interaction.followup.send(
+                f"The number of day numbers provided ({len(numbers_list)}) does not match "
+                f"the number of attachments ({len(media_urls)}). Please verify your input.",
+                ephemeral=True
+            )
+            await response.delete()
+            return
+
+        # Assignment logic for manual input
         if len(numbers_list) == len(media_urls):
-            # Assign each media to a corresponding day
             for day, media_url in zip(numbers_list, media_urls):
-                # Check if the day already exists
                 existing_message = get_existing_message_for_day(day)
                 if existing_message and str(existing_message[0]) != str(message.id):
                     await interaction.followup.send(
@@ -63,7 +134,6 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
                     )
                     await response.delete()
                     return
-                # Archive each day with its media_url
                 try:
                     archive_daily_johan_db(day, message, [media_url], confirmed=True)
                 except ValueError as ve:
@@ -74,45 +144,9 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
                 f"Archived message {message.id} for days: {', '.join(map(str, numbers_list))} with one media per day.",
                 ephemeral=True
             )
-        elif len(numbers_list) == 1 and len(media_urls) <= 3:
-            # Assign all media to the single day
-            day = numbers_list[0]
-            # Check if the day already exists
-            existing_media = []
-            with sqlite3.connect("daily_johans.db") as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT media_url1, media_url2, media_url3 FROM daily_johans WHERE day = ?", (day,))
-                result = cursor.fetchone()
-                if result:
-                    existing_media = list(result)
-                    available_slots = [i for i, url in enumerate(existing_media) if url is None]
-                    if len(available_slots) < len(media_urls):
-                        await interaction.followup.send(
-                            f"Cannot add {len(media_urls)} media to day {day}. Only {len(available_slots)} slots available.",
-                            ephemeral=True
-                        )
-                        await response.delete()
-                        return
-            # Proceed with archiving
-            try:
-                archive_daily_johan_db(day, message, media_urls, confirmed=True)
-                await interaction.followup.send(
-                    f"Archived message {message.id} for day {day} with {len(media_urls)} media attachments.",
-                    ephemeral=True
-                )
-            except ValueError as ve:
-                await interaction.followup.send(str(ve), ephemeral=True)
-        else:
-            # Mismatch between number of days and attachments
-            await interaction.followup.send(
-                "Mismatch between the number of days provided and the number of attachments. Please verify your input.",
-                ephemeral=True
-            )
 
         await response.delete()
 
-    except ValueError:
-        await interaction.followup.send("Invalid input. Please enter valid day numbers separated by spaces or commas.", ephemeral=True)
     except asyncio.TimeoutError:
         await interaction.followup.send("You took too long to respond. Please try again.", ephemeral=True)
     except Exception as e:
