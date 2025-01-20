@@ -4,6 +4,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from dialogues import get_dialogue
+
 
 class SearchCog(commands.Cog):
     def __init__(self, bot):
@@ -39,7 +41,7 @@ class SearchCog(commands.Cog):
             response = "\n\n".join(messages_info)
             await interaction.response.send_message(response)
         else:
-            await interaction.response.send_message(f"No Daily Johan found for day {day}.")
+            await interaction.response.send_message(get_dialogue("no_daily_johan_found", day=day))
 
 
 async def setup(bot):

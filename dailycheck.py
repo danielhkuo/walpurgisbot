@@ -5,6 +5,7 @@ from discord.ext import commands, tasks
 
 from config import JOHAN_USER_ID, DEFAULT_CHANNEL_ID  # Import shared constants
 from database import init_db
+from dialogues import get_dialogue
 
 
 class DailyCheckCog(commands.Cog):
@@ -55,16 +56,14 @@ class DailyCheckCog(commands.Cog):
         # Send reminder if conditions met
         if send_reminder and (not latest_day or latest_day < expected_day):
             try:
-                await channel.send(
-                    f"<@{JOHAN_USER_ID}> Dear pookie bear, you haven't done the Daily Johan for day {expected_day} yet!")
+                await channel.send(get_dialogue("daily_reminder", user=JOHAN_USER_ID, day=expected_day))
             except Exception as e:
                 print(f"Failed to send public reminder: {e}")
 
         # If a gap is detected, post a public alert
         if latest_day < expected_day - 1:
             try:
-                await channel.send(
-                    f"Hmmm... there seems to be a gap in Daily Johans. Last recorded day was {latest_day}.")
+                await channel.send(get_dialogue("gap_alert", latest_day=latest_day))
             except Exception as e:
                 print(f"Failed to send public gap alert: {e}")
 

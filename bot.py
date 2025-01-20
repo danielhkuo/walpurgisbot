@@ -209,7 +209,8 @@ async def load_cogs():
     await bot.load_extension("status")
     await bot.load_extension("fun")
     await bot.load_extension("dailycheck")
-    await bot.load_extension("search")  # Ensure SearchCog is loaded
+    await bot.load_extension("search")
+    await bot.load_extension("persona")
 
 
 async def main():

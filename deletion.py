@@ -6,6 +6,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from dialogues import get_dialogue
+
 
 class DeletionCog(commands.Cog):
     def __init__(self, bot):
@@ -17,7 +19,7 @@ class DeletionCog(commands.Cog):
                                  message_link: Optional[str] = None):
         await interaction.response.defer(ephemeral=True)
         if not day and not message_link:
-            await interaction.followup.send("Please provide either a day number or a message link to me!", ephemeral=True)
+            await interaction.followup.send(get_dialogue("provide_day_or_link"), ephemeral=True)
             return
 
         message_id = None
@@ -28,7 +30,7 @@ class DeletionCog(commands.Cog):
             if match:
                 message_id = match.group(2)
             else:
-                await interaction.followup.send("Hmmm... that might be an invalid message link format.", ephemeral=True)
+                await interaction.followup.send(get_dialogue("invalid_message_link"), ephemeral=True)
                 return
 
         if day:
@@ -45,13 +47,13 @@ class DeletionCog(commands.Cog):
                 entry = cursor.fetchone()
 
         if not entry:
-            await interaction.followup.send("｡ﾟ･ (>﹏<) ･ﾟ｡ I couldn't find an archived Daily Johan for that input.", ephemeral=True)
+            await interaction.followup.send(get_dialogue("no_entry_found"), ephemeral=True)
             return
 
         archived_day, archived_message_id = entry
 
         await interaction.followup.send(
-            f"Ummm... are you sure you want to delete the archived Daily Johan for day {archived_day}? (yes/no)",
+            get_dialogue("confirm_deletion", day=archived_day),
             ephemeral=True
         )
 
@@ -61,7 +63,7 @@ class DeletionCog(commands.Cog):
         try:
             confirmation = await self.bot.wait_for("message", timeout=30.0, check=check)
             if confirmation.content.strip().lower() not in ("yes", "y"):
-                await interaction.followup.send("OK! Deletion cancelled.", ephemeral=True)
+                await interaction.followup.send(get_dialogue("deletion_cancelled"), ephemeral=True)
                 await confirmation.delete()
                 return
 
@@ -70,12 +72,11 @@ class DeletionCog(commands.Cog):
                 cursor.execute("DELETE FROM daily_johans WHERE day = ?", (archived_day,))
                 conn.commit()
 
-            await interaction.followup.send(f"Goodbye! Archived Daily Johan for day {archived_day} has been deleted 。。。ミヽ(。＞＜)ノ",
-                                            ephemeral=True)
+            await interaction.followup.send(get_dialogue("deletion_success", day=archived_day), ephemeral=True)
             await confirmation.delete()
 
         except Exception as e:
-            await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+            await interaction.followup.send(get_dialogue("deletion_error", error=str(e)), ephemeral=True)
 
 
 async def setup(bot):
