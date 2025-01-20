@@ -37,7 +37,7 @@ class DailyCheckCog(commands.Cog):
             try:
                 # Mention Johan by using <@user_id> syntax
                 await channel.send(
-                    f"<@{JOHAN_USER_ID}> Reminder: You haven't added Daily Johan for day {expected_day} yet!")
+                    f"<@{JOHAN_USER_ID}> Dear pookie bear, you haven't done the Daily Johan for day {expected_day} yet!")
             except Exception as e:
                 print(f"Failed to send public reminder: {e}")
 
@@ -45,7 +45,7 @@ class DailyCheckCog(commands.Cog):
         if latest_day < expected_day - 1:
             try:
                 await channel.send(
-                    f"Alert: There seems to be a gap in Daily Johans. Last recorded day was {latest_day}.")
+                    f"Hmmm... there seems to be a gap in Daily Johans. Last recorded day was {latest_day}.")
             except Exception as e:
                 print(f"Failed to send public gap alert: {e}")
 
