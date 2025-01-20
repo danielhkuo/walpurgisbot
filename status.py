@@ -7,12 +7,12 @@ from typing import Optional
 import math
 
 class StatusPaginator(View):
-    def __init__(self, results, start, end, per_page=30):
+    def __init__(self, results, start, end, per_page):
         super().__init__(timeout=180)
         self.results = results
         self.start = start
         self.end = end
-        self.per_page = per_page  # Limit to 30 days per page
+        self.per_page = per_page
         self.current_page = 0
         total_days = max(end - start + 1, 0)
         self.max_pages = math.ceil(total_days / per_page)
@@ -75,7 +75,7 @@ class StatusCog(commands.Cog):
         if not results:
             results = set()
 
-        paginator = StatusPaginator(results=results, start=start, end=end, per_page=30)  # Limit to 30 days per page
+        paginator = StatusPaginator(results=results, start=start, end=end, per_page=20)  # Limit to 20 days per page
         content = f"Daily Johan Status (Page 1/{paginator.max_pages}):\n{paginator.get_page_content()}"
         await interaction.response.send_message(content=content, view=paginator, ephemeral=True)
 
