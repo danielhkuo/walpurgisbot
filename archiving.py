@@ -1,11 +1,14 @@
-import discord
-from discord.ext import commands
-from discord import app_commands
 import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
-from database import init_db, archive_daily_johan_db, get_existing_day_for_message, get_existing_message_for_day, delete_daily_johan_by_message_id
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
 from config import JOHAN_USER_ID  # Import shared Johan user ID
+from database import init_db, archive_daily_johan_db, get_existing_message_for_day
+
 
 class ArchivingCog(commands.Cog):
     def __init__(self, bot):
@@ -40,14 +43,16 @@ class ArchivingCog(commands.Cog):
 
         # If multiple numbers found, request manual submission
         if len(numbers_found) > 1:
-            await message.channel.send("My snuggy wuggy bear, are u trying to catch up dailies? :Flirt: Please manually submit it.")
+            await message.channel.send(
+                "My snuggy wuggy bear, are u trying to catch up dailies? :Flirt: Please manually submit it.")
             return
 
         # Check if the message was posted less than 12 hours ago
         now = datetime.now(timezone.utc)
         time_diff = now - message.created_at
         if time_diff < timedelta(hours=12):
-            await message.channel.send("Pookie, you posted less than 12 hours ago. I don't know if this is a Daily Johan or not. Please manually submit if it is :heart_eyes:")
+            await message.channel.send(
+                "Pookie, you posted less than 12 hours ago. I don't know if this is a Daily Johan or not. Please manually submit if it is :heart_eyes:")
             return
 
         # Check if the auto-detected day number is the immediate next expected
@@ -59,7 +64,8 @@ class ArchivingCog(commands.Cog):
 
         expected_next = latest_day + 1
         if day_number != expected_next:
-            await message.channel.send("This isn't the next daily johan number... I don't think. Please manually submit to verify pookie!")
+            await message.channel.send(
+                "This isn't the next daily johan number... I don't think. Please manually submit to verify pookie!")
             return
 
         # Proceed with archiving as normal
@@ -159,9 +165,11 @@ class ArchivingCog(commands.Cog):
                 )
 
         except ValueError:
-            await interaction.followup.send("Invalid input. Please enter valid day numbers separated by spaces or commas.", ephemeral=True)
+            await interaction.followup.send(
+                "Invalid input. Please enter valid day numbers separated by spaces or commas.", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(ArchivingCog(bot))

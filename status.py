@@ -1,10 +1,12 @@
-import discord
-from discord.ext import commands
-from discord import app_commands
-import sqlite3
-from discord.ui import View, Button
-from typing import Optional
 import math
+import sqlite3
+from typing import Optional
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+from discord.ui import View, Button
+
 
 class StatusPaginator(View):
     def __init__(self, results, start, end, per_page):
@@ -48,6 +50,7 @@ class StatusPaginator(View):
             self.current_page += 1
         await self.update_message(interaction)
 
+
 class StatusCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -64,7 +67,8 @@ class StatusCog(commands.Cog):
                 end = max_day if max_day else start
 
         if end < start:
-            await interaction.response.send_message("End day must be greater than or equal to start day.", ephemeral=True)
+            await interaction.response.send_message("End day must be greater than or equal to start day.",
+                                                    ephemeral=True)
             return
 
         with sqlite3.connect(self.DB_FILE) as conn:
@@ -78,6 +82,7 @@ class StatusCog(commands.Cog):
         paginator = StatusPaginator(results=results, start=start, end=end, per_page=20)  # Limit to 20 days per page
         content = f"Daily Johan Status (Page 1/{paginator.max_pages}):\n{paginator.get_page_content()}"
         await interaction.response.send_message(content=content, view=paginator, ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(StatusCog(bot))

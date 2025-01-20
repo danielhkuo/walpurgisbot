@@ -1,9 +1,11 @@
-import discord
-from discord.ext import commands
-from discord import app_commands
-import sqlite3
 import re
+import sqlite3
 from typing import Optional
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
 
 class DeletionCog(commands.Cog):
     def __init__(self, bot):
@@ -11,7 +13,8 @@ class DeletionCog(commands.Cog):
         self.DB_FILE = "daily_johans.db"
 
     @app_commands.command(name="delete_daily_johan", description="Delete a Daily Johan by day number or message link.")
-    async def delete_daily_johan(self, interaction: discord.Interaction, day: Optional[int] = None, message_link: Optional[str] = None):
+    async def delete_daily_johan(self, interaction: discord.Interaction, day: Optional[int] = None,
+                                 message_link: Optional[str] = None):
         await interaction.response.defer(ephemeral=True)
         if not day and not message_link:
             await interaction.followup.send("Please provide either a day number or a message link.", ephemeral=True)
@@ -67,11 +70,13 @@ class DeletionCog(commands.Cog):
                 cursor.execute("DELETE FROM daily_johans WHERE day = ?", (archived_day,))
                 conn.commit()
 
-            await interaction.followup.send(f"Archived Daily Johan for day {archived_day} has been deleted.", ephemeral=True)
+            await interaction.followup.send(f"Archived Daily Johan for day {archived_day} has been deleted.",
+                                            ephemeral=True)
             await confirmation.delete()
 
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(DeletionCog(bot))

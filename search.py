@@ -1,9 +1,9 @@
-import discord
-from discord.ext import commands
-from discord import app_commands
 import sqlite3
 
-from config import JOHAN_USER_ID  # Import shared constants if needed
+import discord
+from discord import app_commands
+from discord.ext import commands
+
 
 class SearchCog(commands.Cog):
     def __init__(self, bot):
@@ -32,7 +32,7 @@ class SearchCog(commands.Cog):
                 # Collect non-None media URLs
                 media_urls = [url for url in [media_url1, media_url2, media_url3] if url]
 
-                media_links = "\n".join([f"Media {i+1}: {url}" for i, url in enumerate(media_urls)])
+                media_links = "\n".join([f"Media {i + 1}: {url}" for i, url in enumerate(media_urls)])
 
                 messages_info.append(f"**Day {day}:**\n{media_links}\n[Jump to Message]({jump_url})")
 
@@ -40,6 +40,7 @@ class SearchCog(commands.Cog):
             await interaction.response.send_message(response)
         else:
             await interaction.response.send_message(f"No Daily Johan found for day {day}.")
+
 
 async def setup(bot):
     await bot.add_cog(SearchCog(bot))

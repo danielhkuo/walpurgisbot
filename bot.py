@@ -1,13 +1,12 @@
-import discord
-from discord.ext import commands
 import asyncio
-from dotenv import load_dotenv
 import os
 import re
 
-from config import JOHAN_USER_ID  # Import shared constants if needed
+import discord
+from discord.ext import commands
+from dotenv import load_dotenv
 
-from database import archive_daily_johan_db, get_existing_day_for_message, get_existing_message_for_day, delete_daily_johan_by_message_id
+from database import archive_daily_johan_db, get_existing_message_for_day
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
@@ -18,6 +17,7 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+
 @bot.event
 async def on_ready():
     print(f"Bot is ready. Logged in as {bot.user}")
@@ -27,6 +27,7 @@ async def on_ready():
         print(f"Synced {len(synced)} commands globally.")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
+
 
 # Context Menu: Archive Daily Johan
 @bot.tree.context_menu(name="Archive Daily Johan")
@@ -152,6 +153,7 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
     except Exception as e:
         await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
+
 # Context Menu: Delete Daily Johan
 @bot.tree.context_menu(name="Delete Daily Johan")
 async def delete_daily_johan_context_menu(interaction: discord.Interaction, message: discord.Message):
@@ -199,6 +201,7 @@ async def delete_daily_johan_context_menu(interaction: discord.Interaction, mess
     except Exception as e:
         await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
+
 async def load_cogs():
     # Load all necessary cogs
     await bot.load_extension("archiving")
@@ -208,10 +211,12 @@ async def load_cogs():
     await bot.load_extension("dailycheck")
     await bot.load_extension("search")  # Ensure SearchCog is loaded
 
+
 async def main():
     async with bot:
         await load_cogs()
         await bot.start(TOKEN)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
