@@ -8,8 +8,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 # Clone your GitHub repository into the container
-# Replace the URL with your repository's URL
-RUN git clone https://github.com/your_username/your_repo.git .
+RUN git clone https://github.com/danielhkuo/walpurgisbot.git .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
