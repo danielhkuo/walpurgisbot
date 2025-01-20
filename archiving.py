@@ -1,3 +1,4 @@
+import asyncio
 import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -31,27 +32,47 @@ class ArchivingCog(commands.Cog):
         # Find all number occurrences in the message
         numbers_found = re.findall(r"\d+", message.content)
 
+        day_number = None
         if not match:
-            await message.channel.send(f"Media detected from Johan (message ID: {message.id}) but no day number found.")
-            return
+            # Ping Johan for a day number if none is found
+            await message.channel.send(
+                f"<@{self.JOHAN_USER_ID}> I didn't find a day number on your recent post (message ID: {message.id}). Please give me one! >w<"
+            )
 
-        try:
-            day_number = int(match.group(1) or match.group(2))
-        except ValueError:
-            await message.channel.send(f"Failed to parse a valid day number from message {message.id}.")
-            return
+            def check_n(m):
+                return m.author.id == self.JOHAN_USER_ID and m.channel == message.channel
 
-        # If multiple numbers found, request manual submission
+            try:
+                # Wait for Johan's response
+                reply = await self.bot.wait_for("message", timeout=60.0, check=check_n)
+                # Attempt to parse a number from Johan's reply
+                match_reply = re.search(r"(?:Day\s*#?|\#|daily\s+johan\s+)?(\d+)", reply.content, re.IGNORECASE)
+                if match_reply:
+                    day_number = int(match_reply.group(1))
+                else:
+                    await message.channel.send("I- I'm sowwy!!! I couldn't parse a day number from your reply.")
+                    return
+            except asyncio.TimeoutError:
+                await message.channel.send("No response received from Johan.")
+                return
+        else:
+            try:
+                day_number = int(match.group(1) or match.group(2))
+            except ValueError:
+                await message.channel.send(f"Oh no oopsies! I failed to parse a valid day number from message {message.id}.")
+                return
+
+        # If multiple numbers found in the original message, request manual submission
         if len(numbers_found) > 1:
             await message.channel.send(
-                "My snuggy wuggy bear, are u trying to catch up dailies? :Flirt: Please manually submit it.")
+                "My snuggy wuggy bear, are u trying to catch up dailies? :Flirt: Please manually submit it."
+            )
             return
 
         # Check if the message was posted less than 12 hours ago, unless it's day 1 with no prior entries
         now = datetime.now(timezone.utc)
         time_diff = now - message.created_at
 
-        # For day 1, bypass the 12-hour check if no entries exist yet
         is_first_day = False
         with sqlite3.connect("daily_johans.db") as conn:
             cursor = conn.cursor()
@@ -62,7 +83,8 @@ class ArchivingCog(commands.Cog):
 
         if time_diff < timedelta(hours=12) and not (is_first_day and day_number == 1):
             await message.channel.send(
-                "Pookie, you posted less than 12 hours ago. I don't know if this is a Daily Johan or not. Please manually submit if it is :heart_eyes:")
+                "Pookie, you posted less than 12 hours ago. I don't know if this is a Daily Johan or not. Please manually submit if it is :heart_eyes:"
+            )
             return
 
         # Check if the auto-detected day number is the immediate next expected
@@ -75,7 +97,8 @@ class ArchivingCog(commands.Cog):
         expected_next = latest_day + 1
         if day_number != expected_next:
             await message.channel.send(
-                "This isn't the next daily johan number... I don't think. Please manually submit to verify pookie!")
+                "I- I don't think this is the next daily johan number... >w< Please manually submit to verify pookie!"
+            )
             return
 
         # Proceed with archiving as normal
@@ -126,7 +149,7 @@ class ArchivingCog(commands.Cog):
                     existing_message = get_existing_message_for_day(day)
                     if existing_message and str(existing_message[0]) != str(message.id):
                         await interaction.followup.send(
-                            f"Day {day} already has a different Daily Johan. Please resolve duplicates manually.",
+                            f"Day {day} already has a different Daily Johan... please resolve duplicates manually sir.",
                             ephemeral=True
                         )
                         return
@@ -137,7 +160,7 @@ class ArchivingCog(commands.Cog):
                         await interaction.followup.send(str(ve), ephemeral=True)
                         return
                 await interaction.followup.send(
-                    f"Archived message {message_id} for days: {', '.join(map(str, day_list))} with one media per day.",
+                    f"Success! Archived message {message_id} for days: {', '.join(map(str, day_list))} with one media per day.",
                     ephemeral=True
                 )
             elif len(day_list) == 1 and len(media_urls) <= 3:
