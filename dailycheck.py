@@ -2,7 +2,7 @@ import sqlite3
 
 from discord.ext import commands, tasks
 
-from config import JOHAN_USER_ID, CHECK_CHANNEL_ID  # Import shared constants
+from config import JOHAN_USER_ID, DEFAULT_CHANNEL_ID  # Import shared constants
 from database import init_db
 
 
@@ -27,9 +27,9 @@ class DailyCheckCog(commands.Cog):
         # Determine expected latest day (simple logic: next day after latest)
         expected_day = latest_day + 1
 
-        channel = self.bot.get_channel(CHECK_CHANNEL_ID)
+        channel = self.bot.get_channel(DEFAULT_CHANNEL_ID)
         if not channel:
-            print(f"Channel with ID {CHECK_CHANNEL_ID} not found.")
+            print(f"Channel with ID {DEFAULT_CHANNEL_ID} not found.")
             return
 
         # Send public ping if new entry is missing

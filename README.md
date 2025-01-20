@@ -68,6 +68,7 @@ services:
     environment:
       - TOKEN=your_discord_bot_token
       - DEFAULT_CHANNEL_ID=your_default_channel_id
+      - JOHAN_USER_ID="johan"_user_id
     restart: unless-stopped
 ```
 
@@ -83,7 +84,7 @@ services:
    - The database is initialized automatically upon bot startup.
 
 3. **User and Channel IDs (Must change for use in a different server!)**:
-   - Update constants like `JOHAN_USER_ID` and `CHECK_CHANNEL_ID` in the code with the appropriate Discord user and channel IDs.
+   - Update constants like `JOHAN_USER_ID` and `DEFAULT_CHANNEL_ID` in the code with the appropriate Discord user and channel IDs.
 
 4. **Loading Cogs**:
    - The main bot file loads all cogs on startup, ensuring modular features are initialized.
