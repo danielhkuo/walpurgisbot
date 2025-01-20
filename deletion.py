@@ -10,8 +10,8 @@ class DeletionCog(commands.Cog):
         self.bot = bot
         self.DB_FILE = "daily_johans.db"
 
-    @app_commands.command(name="delete_daily_johan_slash", description="Delete a Daily Johan by day number or message link.")
-    async def delete_daily_johan_slash(self, interaction: discord.Interaction, day: Optional[int] = None, message_link: Optional[str] = None):
+    @app_commands.command(name="delete_daily_johan", description="Delete a Daily Johan by day number or message link.")
+    async def delete_daily_johan(self, interaction: discord.Interaction, day: Optional[int] = None, message_link: Optional[str] = None):
         await interaction.response.defer(ephemeral=True)
         if not day and not message_link:
             await interaction.followup.send("Please provide either a day number or a message link.", ephemeral=True)

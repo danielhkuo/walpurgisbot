@@ -3,10 +3,7 @@ from discord.ext import commands
 import asyncio
 from dotenv import load_dotenv
 import os
-import sqlite3
 from database import archive_daily_johan_db, get_existing_day_for_message, get_existing_message_for_day
-
-DB_FILE = "daily_johans.db"
 
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
@@ -83,23 +80,27 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
         await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
 
-
-# Global Context Menu: Delete Daily Johan
 @bot.tree.context_menu(name="Delete Daily Johan")
 async def delete_daily_johan_context_menu(interaction: discord.Interaction, message: discord.Message):
-    # Check if the message is archived as a Daily Johan
+    import sqlite3
+    from database import delete_daily_johan_by_message_id
+
+    # Query all days for which this message is archived
     with sqlite3.connect("daily_johans.db") as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT day FROM daily_johans WHERE message_id = ?", (str(message.id),))
-        result = cursor.fetchone()
+        days = cursor.fetchall()
 
-    if not result:
-        await interaction.response.send_message("This message is not archived as a Daily Johan.", ephemeral=True)
+    if not days:
+        await interaction.response.send_message("This message is not archived as any Daily Johan.", ephemeral=True)
         return
 
-    day_number = result[0]
+    # List all days associated with this message
+    day_list = [str(day[0]) for day in days]
+    days_str = ", ".join(day_list)
+
     await interaction.response.send_message(
-        f"This will delete the archived Daily Johan for day {day_number}. Are you sure? (yes/no)",
+        f"This will delete the archived Daily Johan(s) for day(s): {days_str}. Are you sure? (yes/no)",
         ephemeral=True
     )
 
@@ -113,22 +114,24 @@ async def delete_daily_johan_context_menu(interaction: discord.Interaction, mess
             await confirmation.delete()
             return
 
-        with sqlite3.connect("daily_johans.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM daily_johans WHERE message_id = ?", (str(message.id),))
-            conn.commit()
+        # Delete all records associated with this message
+        delete_daily_johan_by_message_id(message.id)
 
-        await interaction.followup.send(f"Archived Daily Johan for day {day_number} has been deleted.", ephemeral=True)
+        await interaction.followup.send(f"Archived Daily Johan entries for day(s): {days_str} have been deleted.",
+                                        ephemeral=True)
         await confirmation.delete()
 
     except Exception as e:
         await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
+
 async def load_cogs():
+    # Load all necessary cogs
     await bot.load_extension("archiving")
     await bot.load_extension("deletion")
     await bot.load_extension("status")
     await bot.load_extension("fun")
+    await bot.load_extension("dailycheck")  # Added dailycheck to load all cogs
 
 async def main():
     async with bot:
