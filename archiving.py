@@ -4,7 +4,7 @@ from discord import app_commands
 import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
-from database import init_db, archive_daily_johan_db
+from database import init_db, archive_daily_johan_db, get_existing_day_for_message, get_existing_message_for_day, delete_daily_johan_by_message_id
 from config import JOHAN_USER_ID  # Import shared Johan user ID
 
 class ArchivingCog(commands.Cog):
@@ -64,20 +64,25 @@ class ArchivingCog(commands.Cog):
 
         # Proceed with archiving as normal
         media_url = message.attachments[0].url
-        archive_daily_johan_db(day_number, message, media_url, confirmed=True)
-        await message.channel.send(f"Automatically archived Day {day_number} for Johan from message {message.id}.")
+        try:
+            archive_daily_johan_db(day_number, message, [media_url], confirmed=True)
+            await message.channel.send(f"Automatically archived Day {day_number} for Johan from message {message.id}.")
+        except ValueError as ve:
+            await message.channel.send(str(ve))
+        except Exception as e:
+            await message.channel.send(f"An error occurred: {e}")
 
     @app_commands.command(name="archive_series", description="Archive a message for multiple days.")
     async def archive_series(self, interaction: discord.Interaction, message_id: str, days: str):
         """
         Archive a single message for multiple days.
         - message_id: The ID of the message containing images.
-        - days: Comma-separated list of day numbers (e.g., "5,6,7").
+        - days: Space or comma-separated list of day numbers (e.g., "5,6,7" or "5 6 7").
         """
         await interaction.response.defer(ephemeral=True)
         try:
-            # Parse days from input
-            day_list = [int(d.strip()) for d in days.split(",") if d.strip().isdigit()]
+            # Parse days from input (allowing spaces or commas)
+            day_list = [int(d.strip()) for d in re.split(r'[,\s]+', days) if d.strip().isdigit()]
             if not day_list:
                 await interaction.followup.send("No valid day numbers provided.", ephemeral=True)
                 return
@@ -90,17 +95,71 @@ class ArchivingCog(commands.Cog):
                 await interaction.followup.send("Message not found.", ephemeral=True)
                 return
 
-            media_url = message.attachments[0].url if message.attachments else None
-            if not media_url:
+            attachments = message.attachments
+            if not attachments:
                 await interaction.followup.send("No media found in the specified message.", ephemeral=True)
                 return
 
-            # Archive the message for each provided day
-            for day in day_list:
-                archive_daily_johan_db(day, message, media_url, confirmed=True)
+            media_urls = [attachment.url for attachment in attachments]
 
-            await interaction.followup.send(f"Archived message {message_id} for days: {', '.join(map(str, day_list))}", ephemeral=True)
+            # Assignment logic
+            if len(day_list) == len(media_urls):
+                # Assign each media to a corresponding day
+                for day, media_url in zip(day_list, media_urls):
+                    # Check if the day already exists
+                    existing_message = get_existing_message_for_day(day)
+                    if existing_message and str(existing_message[0]) != str(message.id):
+                        await interaction.followup.send(
+                            f"Day {day} already has a different Daily Johan. Please resolve duplicates manually.",
+                            ephemeral=True
+                        )
+                        return
+                    # Archive each day with its media_url
+                    try:
+                        archive_daily_johan_db(day, message, [media_url], confirmed=True)
+                    except ValueError as ve:
+                        await interaction.followup.send(str(ve), ephemeral=True)
+                        return
+                await interaction.followup.send(
+                    f"Archived message {message_id} for days: {', '.join(map(str, day_list))} with one media per day.",
+                    ephemeral=True
+                )
+            elif len(day_list) == 1 and len(media_urls) <= 3:
+                # Assign all media to the single day
+                day = day_list[0]
+                # Check if the day already exists
+                existing_media = []
+                with sqlite3.connect("daily_johans.db") as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT media_url1, media_url2, media_url3 FROM daily_johans WHERE day = ?", (day,))
+                    result = cursor.fetchone()
+                    if result:
+                        existing_media = list(result)
+                        available_slots = [i for i, url in enumerate(existing_media) if url is None]
+                        if len(available_slots) < len(media_urls):
+                            await interaction.followup.send(
+                                f"Cannot add {len(media_urls)} media to day {day}. Only {len(available_slots)} slots available.",
+                                ephemeral=True
+                            )
+                            return
+                # Proceed with archiving
+                try:
+                    archive_daily_johan_db(day, message, media_urls, confirmed=True)
+                    await interaction.followup.send(
+                        f"Archived message {message_id} for day {day} with {len(media_urls)} media attachments.",
+                        ephemeral=True
+                    )
+                except ValueError as ve:
+                    await interaction.followup.send(str(ve), ephemeral=True)
+            else:
+                # Mismatch between number of days and attachments
+                await interaction.followup.send(
+                    "Mismatch between the number of days provided and the number of attachments. Please verify your input.",
+                    ephemeral=True
+                )
 
+        except ValueError:
+            await interaction.followup.send("Invalid input. Please enter valid day numbers separated by spaces or commas.", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 

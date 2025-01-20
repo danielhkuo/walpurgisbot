@@ -3,7 +3,9 @@ from discord.ext import commands
 import asyncio
 from dotenv import load_dotenv
 import os
-import re
+
+from config import JOHAN_USER_ID  # Import shared constants if needed
+
 from database import archive_daily_johan_db, get_existing_day_for_message, get_existing_message_for_day, delete_daily_johan_by_message_id
 
 load_dotenv()
@@ -25,7 +27,7 @@ async def on_ready():
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
-
+# Context Menu: Archive Daily Johan
 @bot.tree.context_menu(name="Archive Daily Johan")
 async def archive_daily_johan_context_menu(interaction: discord.Interaction, message: discord.Message):
     await interaction.response.send_message("Please enter the day number(s) for this Daily Johan (separated by spaces or commas).", ephemeral=True)
@@ -41,38 +43,82 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
         numbers_list = [int(x) for x in re.split(r'[\s,]+', user_input) if x.isdigit()]
 
         media_attachments = message.attachments
-        media_url = media_attachments[0].url if media_attachments else None
-        if not media_url:
+        media_urls = [attachment.url for attachment in media_attachments]
+
+        if not media_urls:
             await interaction.followup.send("No media found in the selected message.", ephemeral=True)
             await response.delete()
             return
 
-        # Check if count of numbers matches number of attachments
-        if len(numbers_list) != len(media_attachments):
+        # Assignment logic
+        if len(numbers_list) == len(media_urls):
+            # Assign each media to a corresponding day
+            for day, media_url in zip(numbers_list, media_urls):
+                # Check if the day already exists
+                existing_message = get_existing_message_for_day(day)
+                if existing_message and str(existing_message[0]) != str(message.id):
+                    await interaction.followup.send(
+                        f"Day {day} already has a different Daily Johan. Please resolve duplicates manually.",
+                        ephemeral=True
+                    )
+                    await response.delete()
+                    return
+                # Archive each day with its media_url
+                try:
+                    archive_daily_johan_db(day, message, [media_url], confirmed=True)
+                except ValueError as ve:
+                    await interaction.followup.send(str(ve), ephemeral=True)
+                    await response.delete()
+                    return
             await interaction.followup.send(
-                f"The number of day numbers provided ({len(numbers_list)}) does not match "
-                f"the number of attachments ({len(media_attachments)}). "
-                "Please verify and try again.",
+                f"Archived message {message.id} for days: {', '.join(map(str, numbers_list))} with one media per day.",
                 ephemeral=True
             )
-            await response.delete()
-            return
+        elif len(numbers_list) == 1 and len(media_urls) <= 3:
+            # Assign all media to the single day
+            day = numbers_list[0]
+            # Check if the day already exists
+            existing_media = []
+            with sqlite3.connect("daily_johans.db") as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT media_url1, media_url2, media_url3 FROM daily_johans WHERE day = ?", (day,))
+                result = cursor.fetchone()
+                if result:
+                    existing_media = list(result)
+                    available_slots = [i for i, url in enumerate(existing_media) if url is None]
+                    if len(available_slots) < len(media_urls):
+                        await interaction.followup.send(
+                            f"Cannot add {len(media_urls)} media to day {day}. Only {len(available_slots)} slots available.",
+                            ephemeral=True
+                        )
+                        await response.delete()
+                        return
+            # Proceed with archiving
+            try:
+                archive_daily_johan_db(day, message, media_urls, confirmed=True)
+                await interaction.followup.send(
+                    f"Archived message {message.id} for day {day} with {len(media_urls)} media attachments.",
+                    ephemeral=True
+                )
+            except ValueError as ve:
+                await interaction.followup.send(str(ve), ephemeral=True)
+        else:
+            # Mismatch between number of days and attachments
+            await interaction.followup.send(
+                "Mismatch between the number of days provided and the number of attachments. Please verify your input.",
+                ephemeral=True
+            )
 
-        # If multiple numbers found and count matches attachments, proceed with archiving each.
-        for day_number in numbers_list:
-            archive_daily_johan_db(day_number, message, media_url, confirmed=True)
-
-        await interaction.followup.send(
-            f"Archived Daily Johan for day(s): {', '.join(map(str, numbers_list))}.",
-            ephemeral=True
-        )
         await response.delete()
 
     except ValueError:
-        await interaction.followup.send("Invalid input. Please enter valid day numbers.", ephemeral=True)
+        await interaction.followup.send("Invalid input. Please enter valid day numbers separated by spaces or commas.", ephemeral=True)
+    except asyncio.TimeoutError:
+        await interaction.followup.send("You took too long to respond. Please try again.", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
+# Context Menu: Delete Daily Johan
 @bot.tree.context_menu(name="Delete Daily Johan")
 async def delete_daily_johan_context_menu(interaction: discord.Interaction, message: discord.Message):
     import sqlite3
@@ -114,17 +160,19 @@ async def delete_daily_johan_context_menu(interaction: discord.Interaction, mess
                                         ephemeral=True)
         await confirmation.delete()
 
+    except asyncio.TimeoutError:
+        await interaction.followup.send("You took too long to respond. Please try again.", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
 
-
 async def load_cogs():
+    # Load all necessary cogs
     await bot.load_extension("archiving")
     await bot.load_extension("deletion")
     await bot.load_extension("status")
     await bot.load_extension("fun")
     await bot.load_extension("dailycheck")
-    await bot.load_extension("search")
+    await bot.load_extension("search")  # Ensure SearchCog is loaded
 
 async def main():
     async with bot:
