@@ -47,10 +47,20 @@ class ArchivingCog(commands.Cog):
                 "My snuggy wuggy bear, are u trying to catch up dailies? :Flirt: Please manually submit it.")
             return
 
-        # Check if the message was posted less than 12 hours ago
+        # Check if the message was posted less than 12 hours ago, unless it's day 1 with no prior entries
         now = datetime.now(timezone.utc)
         time_diff = now - message.created_at
-        if time_diff < timedelta(hours=12):
+
+        # For day 1, bypass the 12-hour check if no entries exist yet
+        is_first_day = False
+        with sqlite3.connect("daily_johans.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(day) FROM daily_johans")
+            result = cursor.fetchone()
+            latest_day = result[0] if result and result[0] else 0
+            is_first_day = (latest_day == 0)
+
+        if time_diff < timedelta(hours=12) and not (is_first_day and day_number == 1):
             await message.channel.send(
                 "Pookie, you posted less than 12 hours ago. I don't know if this is a Daily Johan or not. Please manually submit if it is :heart_eyes:")
             return

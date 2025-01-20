@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 
 import discord
 from discord.ext import commands, tasks
+
 from config import DEFAULT_CHANNEL_ID  # Import shared default channel ID
+
 
 class FunCog(commands.Cog):
     def __init__(self, bot):
@@ -42,15 +44,18 @@ class FunCog(commands.Cog):
 
         # Feature 2: Respond to "cringe"
         if re.search(r'\bcringe\b', message.content, re.IGNORECASE):
-            await message.channel.send("https://tenor.com/view/cringe-comp-cringe-shrek-shrek-cringe-compilation-snap-gif-11981937")
+            await message.channel.send(
+                "https://tenor.com/view/cringe-comp-cringe-shrek-shrek-cringe-compilation-snap-gif-11981937")
 
         # Feature 3: Respond to "massive"
         if re.search(r'\bmassive\b', message.content, re.IGNORECASE):
-            await message.channel.send("https://tenor.com/view/ninja-any-haircut-recommendations-low-taper-fade-you-know-what-else-is-massive-gif-3708438262570242561")
+            await message.channel.send(
+                "https://tenor.com/view/ninja-any-haircut-recommendations-low-taper-fade-you-know-what-else-is-massive-gif-3708438262570242561")
 
         # Feature 4: Respond to "erm" with any length of e's, r's, or m's
         if re.search(r'\b[eE]+[rR]+[mM]+\b', message.content):
-            await message.channel.send("https://tenor.com/view/jungwon-jungwon-glasses-jungwon-um-ackshually-jungwon-um-actually-um-actually-gif-16607372845996584568")
+            await message.channel.send(
+                "https://tenor.com/view/jungwon-jungwon-glasses-jungwon-um-ackshually-jungwon-um-actually-um-actually-gif-16607372845996584568")
 
         # Feature 5: Respond to "ripbozo" or "rip bozo"
         if re.search(r'\brip\s*bozo\b', message.content, re.IGNORECASE):
@@ -71,6 +76,7 @@ class FunCog(commands.Cog):
                 "And now you're getting older, but still the goat, my goat. I love you pookie bear, my glorious king, LeBron James.☺️♥️🫶🏻"
             )
             await message.channel.send(response)
+
 
 async def setup(bot):
     await bot.add_cog(FunCog(bot))

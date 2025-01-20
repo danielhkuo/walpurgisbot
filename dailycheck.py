@@ -27,7 +27,8 @@ class DailyCheckCog(commands.Cog):
 
             last_timestamp = None
             if latest_day:
-                cursor.execute("SELECT timestamp FROM daily_johans WHERE day = ? ORDER BY timestamp DESC LIMIT 1", (latest_day,))
+                cursor.execute("SELECT timestamp FROM daily_johans WHERE day = ? ORDER BY timestamp DESC LIMIT 1",
+                               (latest_day,))
                 timestamp_result = cursor.fetchone()
                 last_timestamp = timestamp_result[0] if timestamp_result else None
 
