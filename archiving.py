@@ -71,7 +71,6 @@ class ArchivingCog(commands.Cog):
         day_number = None
         bypass_time_check = False  # Initialize flag here
 
-        # Handle case: No day number detected in caption
         if not match:
             await message.channel.send(
                 get_dialogue("ask_if_daily_johan", user=self.JOHAN_USER_ID, msg_id=message.id)
@@ -85,10 +84,32 @@ class ArchivingCog(commands.Cog):
                 reply_content = reply.content.strip().lower()
                 if reply_content in ["no", "n"]:
                     return  # Johan indicated it's not a Daily Johan.
-                match_number = re.search(r"(\d+)", reply.content)
-                if match_number:
-                    day_number = int(match_number.group(1))
-                    bypass_time_check = True  # Set flag since we got a manual day number
+
+                # Extract numbers from Johan's reply
+                numbers_in_reply = re.findall(r"\d+", reply.content)
+                if numbers_in_reply:
+                    # If multiple images and Johan provided multiple day numbers, attempt series archiving
+                    if len(numbers_in_reply) >= 2 and len(media_urls) >= 2:
+                        day_numbers = [int(num) for num in numbers_in_reply[:len(media_urls)]]
+                        for day, media_url in zip(day_numbers, media_urls):
+                            if get_existing_message_for_day(day):
+                                await message.channel.send(
+                                    get_dialogue("day_already_archived", day=day)
+                                )
+                                continue  # Skip archiving for this day
+                            try:
+                                archive_daily_johan_db(day, message, [media_url], confirmed=True)
+                            except ValueError as ve:
+                                await message.channel.send(str(ve))
+                                continue
+                        await message.channel.send(
+                            get_dialogue("auto_archived_series", days=", ".join(map(str, day_numbers)))
+                        )
+                        return
+                    else:
+                        # Assume single day if only one number or conditions for series are not met
+                        day_number = int(numbers_in_reply[0])
+                        bypass_time_check = True
                 else:
                     await message.channel.send(get_dialogue("couldnt_parse_reply"))
                     return
@@ -220,7 +241,8 @@ class ArchivingCog(commands.Cog):
                     # Check if the day already exists
                     existing_message = get_existing_message_for_day(day)
                     if existing_message and str(existing_message[0]) != str(message.id):
-                        await interaction.followup.send(get_dialogue("day_taken_resolve_dupes", day=day), ephemeral=True)
+                        await interaction.followup.send(get_dialogue("day_taken_resolve_dupes", day=day),
+                                                        ephemeral=True)
                         return
                     # Archive each day with its media_url
                     try:
@@ -229,7 +251,8 @@ class ArchivingCog(commands.Cog):
                         await interaction.followup.send(str(ve), ephemeral=True)
                         return
                 await interaction.followup.send(
-                    get_dialogue("successful_media_archive", message_id=message.id, day_list=", ".join(map(str, day_list))),
+                    get_dialogue("successful_media_archive", message_id=message.id,
+                                 day_list=", ".join(map(str, day_list))),
                     ephemeral=True
                 )
             elif len(day_list) == 1 and len(media_urls) <= 3:
@@ -246,7 +269,8 @@ class ArchivingCog(commands.Cog):
                         available_slots = [i for i, url in enumerate(existing_media) if url is None]
                         if len(available_slots) < len(media_urls):
                             await interaction.followup.send(
-                                get_dialogue("not_enough_slots", media_count=len(media_urls), day=day, slots=len(available_slots)),
+                                get_dialogue("not_enough_slots", media_count=len(media_urls), day=day,
+                                             slots=len(available_slots)),
                                 ephemeral=True
                             )
                             return

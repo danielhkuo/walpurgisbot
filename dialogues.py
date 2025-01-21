@@ -33,7 +33,7 @@ DIALOGUES = {
         "verification_prompt": "(✿>ꇴ<) Day {provided} doesn’t seem wike the next expected day... Is this intewntionaw, pookie? Pwease confiwm! (yes/no) ꒰⑅ᵕ༚ᵕ꒱˖♡",
         "verification_denied": "Awighties~ (*´꒳`*) Wets twy again, nyan~ Couwd you confiwm if dis is a Daiwy Johan and pwovide the cowwect day numbew, pwease? (っ´ω`c)♡",
         "verification_accepted": "Undewstood!!! \(｡>‿‿<｡) Pwocweeding with awchiving fow day {provided}. ✨UwU✨",
-        "ask_if_daily_johan": "<@{user}> Hewwooo~ Is this a Daiwy Johan?! ✩°｡⋆⸜(ू｡•ω•｡) Pwease wepwy with the *boops youw nyose* day numbew, nya~! If nyot, wepwy ‘no’. (=^-ω-^=)"
+        "ask_if_daily_johan": "<@{user}> Hewwooo~ Is this a Daiwy Johan?! ✩°｡⋆⸜(ू｡•ω•｡) Pwease wepwy with the *boops youw nyose* day number(s), nya~! If nyot, wepwy ‘no’. (=^-ω-^=)"
     },
     "vangogh": {
         "no_number_found": "<@{user}> Alas, the day number eludes me. Could you enlighten me with its value, dear friend?",
@@ -67,7 +67,7 @@ DIALOGUES = {
         "verification_prompt": "This day {provided} doesn't align with our records. Is this intentional, dear friend? Please confirm. (yes/no)",
         "verification_denied": "Very well, could you confirm if this is a Daily Johan and provide the correct day number?",
         "verification_accepted": "Understood! Proceeding with archiving for day {provided}. 🌻",
-        "ask_if_daily_johan": "<@{user}> Might this post be a Daily Johan? If so, kindly reply with the day number. If not, reply 'no'."
+        "ask_if_daily_johan": "<@{user}> Might this post be a Daily Johan? If so, kindly reply with the day number(s). If not, reply 'no'."
     },
     "gentleman": {
         "no_number_found": "Good day, sir. I couldn't find the day number on your post. Might you provide it, please?",
@@ -101,11 +101,12 @@ DIALOGUES = {
         "verification_prompt": "Day {provided} does not match our expected sequence. Is this intentional, sir? Please confirm. (yes/no)",
         "verification_denied": "Very well, could you confirm if this is a Daily Johan and provide the correct day number?",
         "verification_accepted": "Understood! Proceeding with archiving for day {provided}. 🎩",
-        "ask_if_daily_johan": "Good sir, is this post a Daily Johan? If so, please reply with the day number. If not, reply 'no'.",
+        "ask_if_daily_johan": "Good sir, is this post a Daily Johan? If so, please reply with the day number(s). If not, reply 'no'.",
     }
 }
 
 current_persona = "cute"  # Default persona
+
 
 def set_persona(persona_name: str):
     global current_persona
@@ -113,6 +114,7 @@ def set_persona(persona_name: str):
         current_persona = persona_name
     else:
         print(f"Persona '{persona_name}' not found. No changes made.")
+
 
 def get_dialogue(key: str, **kwargs):
     persona_dialogues = DIALOGUES.get(current_persona, {})
