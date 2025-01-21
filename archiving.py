@@ -1,3 +1,6 @@
+# archiving.py
+
+import asyncio
 import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -20,16 +23,58 @@ class ArchivingCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         await self.bot.process_commands(message)
-        if message.author.id != self.JOHAN_USER_ID or not message.attachments:
+        if not message.attachments:  # Skip processing if no media attached
             return
 
-        match = re.search(r"(?:Day\s*#?|\#|daily\s+johan\s+)(\d+)|(^\d+$)", message.content, re.IGNORECASE)
+        # Only process messages with attachments (photos/videos)
+        media_urls = [att.url for att in message.attachments][:3]  # Limit to first 3 media URLs
+        if not media_urls:
+            return
+
+        # Determine next expected day
+        with sqlite3.connect("daily_johans.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(day) FROM daily_johans")
+            result = cursor.fetchone()
+            latest_day = result[0] if result and result[0] else 0
+        expected_next = latest_day + 1
+
+        # Attempt to find day numbers in the message caption
         numbers_found = re.findall(r"\d+", message.content)
+        match = re.search(
+            r"(?:Day\s*#?|\#|daily\s+johan\s+|johan\s+)(\d+)|(^\d+$)",
+            message.content,
+            re.IGNORECASE
+        )
+
+        # SERIES ARCHIVING: If multiple numbers and multiple media attachments detected
+        if len(numbers_found) >= 2 and len(media_urls) >= 2:
+            # Process each found number with corresponding media attachment
+            day_numbers = [int(num) for num in numbers_found[:len(media_urls)]]
+            for day, media_url in zip(day_numbers, media_urls):
+                # Check if the day already archived
+                if get_existing_message_for_day(day):
+                    await message.channel.send(
+                        get_dialogue("day_already_archived", day=day)
+                    )
+                    continue  # Skip archiving for this day
+                try:
+                    archive_daily_johan_db(day, message, [media_url], confirmed=True)
+                except ValueError as ve:
+                    await message.channel.send(str(ve))
+                    continue
+            await message.channel.send(
+                get_dialogue("auto_archived_series", days=", ".join(map(str, day_numbers)))
+            )
+            return
 
         day_number = None
+        bypass_time_check = False  # Initialize flag here
+
+        # Handle case: No day number detected in caption
         if not match:
             await message.channel.send(
-                get_dialogue("ask_for_number", user=self.JOHAN_USER_ID, msg_id=message.id)
+                get_dialogue("ask_if_daily_johan", user=self.JOHAN_USER_ID, msg_id=message.id)
             )
 
             def check_n(m):
@@ -37,9 +82,13 @@ class ArchivingCog(commands.Cog):
 
             try:
                 reply = await self.bot.wait_for("message", timeout=60.0, check=check_n)
-                match_reply = re.search(r"(?:Day\s*#?|\#|daily\s+johan\s+)?(\d+)", reply.content, re.IGNORECASE)
-                if match_reply:
-                    day_number = int(match_reply.group(1))
+                reply_content = reply.content.strip().lower()
+                if reply_content in ["no", "n"]:
+                    return  # Johan indicated it's not a Daily Johan.
+                match_number = re.search(r"(\d+)", reply.content)
+                if match_number:
+                    day_number = int(match_number.group(1))
+                    bypass_time_check = True  # Set flag since we got a manual day number
                 else:
                     await message.channel.send(get_dialogue("couldnt_parse_reply"))
                     return
@@ -53,44 +102,83 @@ class ArchivingCog(commands.Cog):
                 await message.channel.send(get_dialogue("parse_error", msg_id=message.id))
                 return
 
+        # If multiple numbers found outside series context, request manual submission
         if len(numbers_found) > 1:
             await message.channel.send(get_dialogue("multiple_numbers"))
             return
 
-        now = datetime.now(timezone.utc)
-        time_diff = now - message.created_at
+        # Conditionally perform time check only if not bypassed by manual input
+        if not bypass_time_check:
+            now = datetime.now(timezone.utc)
+            time_diff = now - message.created_at
 
-        is_first_day = False
-        with sqlite3.connect("daily_johans.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT MAX(day) FROM daily_johans")
-            result = cursor.fetchone()
-            latest_day = result[0] if result and result[0] else 0
-            is_first_day = (latest_day == 0)
+            # Check if the post is too recent (<12 hours), unless it's day 1
+            is_first_day = (latest_day == 0 and day_number == 1)
+            if time_diff < timedelta(hours=12) and not is_first_day:
+                await message.channel.send(get_dialogue("recent_post"))
+                return
 
-        if time_diff < timedelta(hours=12) and not (is_first_day and day_number == 1):
-            await message.channel.send(get_dialogue("recent_post"))
-            return
-
-        with sqlite3.connect("daily_johans.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT MAX(day) FROM daily_johans")
-            result = cursor.fetchone()
-            latest_day = result[0] if result and result[0] else 0
-
-        expected_next = latest_day + 1
+        # Verification for unexpected day number
         if day_number != expected_next:
-            await message.channel.send(get_dialogue("not_next_number"))
+            await message.channel.send(
+                get_dialogue("verification_prompt", provided=day_number)
+            )
+
+            def check_verification(m):
+                return (m.author.id == self.JOHAN_USER_ID and
+                        m.channel == message.channel and
+                        m.content.lower() in ["yes", "no", "y", "n"])
+
+            try:
+                verification_reply = await self.bot.wait_for("message", timeout=60.0, check=check_verification)
+                if verification_reply.content.lower() in ["yes", "y"]:
+                    await message.channel.send(
+                        get_dialogue("verification_accepted", provided=day_number)
+                    )
+                else:
+                    await message.channel.send(get_dialogue("verification_denied"))
+                    await message.channel.send(
+                        get_dialogue("ask_if_daily_johan", user=self.JOHAN_USER_ID, msg_id=message.id)
+                    )
+                    try:
+                        reply = await self.bot.wait_for("message", timeout=60.0, check=check_n)
+                        if re.search(r"\b(yes|yep|affirmative|sure|of course)\b", reply.content, re.IGNORECASE):
+                            await message.channel.send(
+                                get_dialogue("provide_day_number", user=self.JOHAN_USER_ID, msg_id=message.id)
+                            )
+                            try:
+                                number_reply = await self.bot.wait_for("message", timeout=60.0, check=check_n)
+                                match_number = re.search(r"(\d+)", number_reply.content)
+                                if match_number:
+                                    day_number = int(match_number.group(1))
+                                else:
+                                    await message.channel.send(get_dialogue("couldnt_parse_reply"))
+                                    return
+                            except asyncio.TimeoutError:
+                                await message.channel.send("No response received from Johan.")
+                                return
+                        else:
+                            return
+                    except asyncio.TimeoutError:
+                        await message.channel.send("No response received from Johan.")
+                        return
+            except asyncio.TimeoutError:
+                await message.channel.send("No response received from Johan.")
+                return
+
+        # Check for duplicate archive for a single day
+        if get_existing_message_for_day(day_number):
+            await message.channel.send(get_dialogue("day_already_archived", day=day_number))
             return
 
-        media_url = message.attachments[0].url
+        # Proceed with single-day archiving using up to 3 media attachments
         try:
-            archive_daily_johan_db(day_number, message, [media_url], confirmed=True)
+            archive_daily_johan_db(day_number, message, media_urls, confirmed=True)
             await message.channel.send(get_dialogue("auto_archived", day=day_number))
         except ValueError as ve:
             await message.channel.send(str(ve))
         except Exception as e:
-            await message.channel.send(f"An error occurred: {e}")
+            await message.channel.send(get_dialogue("deletion_error", error=e))
 
     @app_commands.command(name="archive_series", description="Archive a message for multiple days.")
     async def archive_series(self, interaction: discord.Interaction, message_id: str, days: str):
@@ -109,10 +197,13 @@ class ArchivingCog(commands.Cog):
 
             # Fetch the message from the channel where the command is invoked
             channel = interaction.channel
-            message = await channel.fetch_message(int(message_id))
-
-            if not message:
-                await interaction.followup.send(get_dialogue("message_not_found"), ephemeral=True)
+            try:
+                message = await channel.fetch_message(int(message_id))
+            except discord.NotFound:
+                await interaction.followup.send(get_dialogue("message_not_found", msg_id=message_id), ephemeral=True)
+                return
+            except discord.HTTPException:
+                await interaction.followup.send("An error occurred while fetching the message.", ephemeral=True)
                 return
 
             attachments = message.attachments
@@ -129,9 +220,7 @@ class ArchivingCog(commands.Cog):
                     # Check if the day already exists
                     existing_message = get_existing_message_for_day(day)
                     if existing_message and str(existing_message[0]) != str(message.id):
-                        await interaction.followup.send(get_dialogue("day_taken_resolve_dupes", day=day),
-                                                        ephemeral=True
-                                                        )
+                        await interaction.followup.send(get_dialogue("day_taken_resolve_dupes", day=day), ephemeral=True)
                         return
                     # Archive each day with its media_url
                     try:
@@ -140,8 +229,7 @@ class ArchivingCog(commands.Cog):
                         await interaction.followup.send(str(ve), ephemeral=True)
                         return
                 await interaction.followup.send(
-                    get_dialogue("successful_media_archive", message_id=message.id,
-                                 day_list=", ".join(map(str, day_list))),
+                    get_dialogue("successful_media_archive", message_id=message.id, day_list=", ".join(map(str, day_list))),
                     ephemeral=True
                 )
             elif len(day_list) == 1 and len(media_urls) <= 3:
@@ -158,8 +246,7 @@ class ArchivingCog(commands.Cog):
                         available_slots = [i for i, url in enumerate(existing_media) if url is None]
                         if len(available_slots) < len(media_urls):
                             await interaction.followup.send(
-                                get_dialogue("not_enough_slots", media_count=len(media_urls), day=day,
-                                             slots=len(available_slots)),
+                                get_dialogue("not_enough_slots", media_count=len(media_urls), day=day, slots=len(available_slots)),
                                 ephemeral=True
                             )
                             return
@@ -182,7 +269,7 @@ class ArchivingCog(commands.Cog):
             await interaction.followup.send(
                 get_dialogue("invalid_input"), ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"An error occurred: {e}", ephemeral=True)
+            await interaction.followup.send(get_dialogue("deletion_error", error=e), ephemeral=True)
 
 
 async def setup(bot):
