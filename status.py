@@ -5,7 +5,26 @@ from typing import Optional
 import discord
 from discord import app_commands
 from discord.ext import commands
-from discord.ui import View, Button
+from discord.ui import View, Button, Modal, TextInput
+
+
+class JumpModal(Modal, title="Jump to Page"):
+    page_input = TextInput(label="Enter page number", style=discord.TextStyle.short)
+
+    def __init__(self, paginator: "StatusPaginator"):
+        super().__init__()
+        self.paginator = paginator
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            page = int(self.page_input.value.strip()) - 1  # Convert to zero-index
+            if 0 <= page < self.paginator.max_pages:
+                self.paginator.current_page = page
+                await self.paginator.update_message(interaction)
+            else:
+                await interaction.response.send_message("Invalid page number.", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("Please enter a valid number.", ephemeral=True)
 
 
 class StatusPaginator(View):
@@ -30,25 +49,45 @@ class StatusPaginator(View):
 
     async def update_message(self, interaction: discord.Interaction):
         content = f"Daily Johan Status (Page {self.current_page + 1}/{self.max_pages}):\n{self.get_page_content()}"
+        # Update button disabled states based on current page
         for item in self.children:
             if isinstance(item, Button):
-                if item.custom_id == "prev":
+                if item.custom_id == "first":
+                    item.disabled = self.current_page <= 0
+                elif item.custom_id == "prev":
                     item.disabled = self.current_page <= 0
                 elif item.custom_id == "next":
                     item.disabled = self.current_page >= self.max_pages - 1
+                elif item.custom_id == "last":
+                    item.disabled = self.current_page >= self.max_pages - 1
         await interaction.response.edit_message(content=content, view=self)
 
-    @discord.ui.button(label="Previous", style=discord.ButtonStyle.primary, custom_id="prev")
+    @discord.ui.button(label="⏮", style=discord.ButtonStyle.primary, custom_id="first")
+    async def first_button(self, interaction: discord.Interaction, button: Button):
+        self.current_page = 0
+        await self.update_message(interaction)
+
+    @discord.ui.button(label="◀", style=discord.ButtonStyle.primary, custom_id="prev")
     async def prev_button(self, interaction: discord.Interaction, button: Button):
         if self.current_page > 0:
             self.current_page -= 1
         await self.update_message(interaction)
 
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, custom_id="next")
+    @discord.ui.button(label="▶", style=discord.ButtonStyle.primary, custom_id="next")
     async def next_button(self, interaction: discord.Interaction, button: Button):
         if self.current_page < self.max_pages - 1:
             self.current_page += 1
         await self.update_message(interaction)
+
+    @discord.ui.button(label="⏭", style=discord.ButtonStyle.primary, custom_id="last")
+    async def last_button(self, interaction: discord.Interaction, button: Button):
+        self.current_page = self.max_pages - 1
+        await self.update_message(interaction)
+
+    @discord.ui.button(label="🔢", style=discord.ButtonStyle.secondary, custom_id="jump")
+    async def jump_button(self, interaction: discord.Interaction, button: Button):
+        modal = JumpModal(self)
+        await interaction.response.send_modal(modal)
 
 
 class StatusCog(commands.Cog):
@@ -79,7 +118,7 @@ class StatusCog(commands.Cog):
         if not results:
             results = set()
 
-        paginator = StatusPaginator(results=results, start=start, end=end, per_page=20)  # Limit to 20 days per page
+        paginator = StatusPaginator(results=results, start=start, end=end, per_page=20)
         content = f"Daily Johan Status (Page 1/{paginator.max_pages}):\n{paginator.get_page_content()}"
         await interaction.response.send_message(content=content, view=paginator, ephemeral=True)
 

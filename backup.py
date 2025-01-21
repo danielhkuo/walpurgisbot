@@ -1,9 +1,7 @@
 # backup.py
 
-import re
 import asyncio
-import sqlite3
-from datetime import datetime, timezone, timedelta
+import re
 
 import discord
 from discord import app_commands
@@ -11,16 +9,17 @@ from discord.ext import commands
 
 from config import JOHAN_USER_ID
 from database import archive_daily_johan_db, get_existing_message_for_day
-from dialogues import get_dialogue
 
 PASSWORD = "jecslide"  # Password for running the backup command
+
 
 class BackupCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.stop_requested = False  # Flag for panic button
 
-    @app_commands.command(name="scrape_backup", description="Run a one-time automatic scraping backup (requires password).")
+    @app_commands.command(name="scrape_backup",
+                          description="Run a one-time automatic scraping backup (requires password).")
     @app_commands.describe(
         password="The required password to run this command.",
         channels="Comma separated list of channel IDs to scan."
@@ -66,7 +65,8 @@ class BackupCog(commands.Cog):
     @app_commands.command(name="panic_stop", description="Stop the ongoing backup process immediately.")
     async def panic_stop(self, interaction: discord.Interaction):
         self.stop_requested = True
-        await interaction.response.send_message("Panic stop initiated. The backup process will halt soon.", ephemeral=True)
+        await interaction.response.send_message("Panic stop initiated. The backup process will halt soon.",
+                                                ephemeral=True)
 
     async def process_backup(self, interaction: discord.Interaction, channels):
         await interaction.followup.send("Starting backup process...", ephemeral=True)
@@ -137,7 +137,8 @@ class BackupCog(commands.Cog):
 
                         user_numbers = re.findall(r"\d+", content)
                         if not user_numbers:
-                            await interaction.followup.send("No valid day numbers provided. Skipping message.", ephemeral=True)
+                            await interaction.followup.send("No valid day numbers provided. Skipping message.",
+                                                            ephemeral=True)
                             # No continue here needed; naturally proceeds to next message
                         else:
                             if len(user_numbers) >= 2 and len(media_urls) >= 2:
@@ -158,16 +159,19 @@ class BackupCog(commands.Cog):
                                     except Exception:
                                         pass
                     except asyncio.TimeoutError:
-                        await interaction.followup.send("Timed out waiting for response. Skipping message.", ephemeral=True)
+                        await interaction.followup.send("Timed out waiting for response. Skipping message.",
+                                                        ephemeral=True)
                         # Skip to next message after timeout
                         continue
 
             except discord.Forbidden:
-                await interaction.followup.send(f"Missing permissions to read history in channel {channel.mention}.", ephemeral=True)
+                await interaction.followup.send(f"Missing permissions to read history in channel {channel.mention}.",
+                                                ephemeral=True)
             except Exception as e:
                 await interaction.followup.send(f"An error occurred in channel {channel.mention}: {e}", ephemeral=True)
 
         await interaction.followup.send("Backup process completed.", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(BackupCog(bot))
