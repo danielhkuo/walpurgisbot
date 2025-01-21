@@ -1,7 +1,5 @@
-# backup.py
-
-import asyncio
 import re
+import asyncio
 
 import discord
 from discord import app_commands
@@ -12,19 +10,23 @@ from database import archive_daily_johan_db, get_existing_message_for_day
 
 PASSWORD = "jecslide"  # Password for running the backup command
 
-
 class BackupCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.stop_requested = False  # Flag for panic button
+        self.stop_requested = False  # Flag for panic stop
+        self.backup_active = False   # Flag to prevent concurrent backups
 
-    @app_commands.command(name="scrape_backup",
-                          description="Run a one-time automatic scraping backup (requires password).")
+    @app_commands.command(name="scrape_backup", description="Run a one-time automatic scraping backup (requires password).")
     @app_commands.describe(
         password="The required password to run this command.",
         channels="Comma separated list of channel IDs to scan."
     )
     async def scrape_backup(self, interaction: discord.Interaction, password: str, channels: str):
+        # Prevent starting if a backup is already active
+        if self.backup_active:
+            await interaction.response.send_message("A backup is already running. Please wait for it to finish or use /panic_stop.", ephemeral=True)
+            return
+
         # Check password
         if password != PASSWORD:
             await interaction.response.send_message("Incorrect password.", ephemeral=True)
@@ -56,28 +58,36 @@ class BackupCog(commands.Cog):
             ephemeral=True
         )
 
-        # Reset stop flag at the start of a new backup
+        # Set flags for new backup
         self.stop_requested = False
+        self.backup_active = True
 
         # Begin processing backup
         await self.process_backup(interaction, scan_channels)
 
+        # Reset active flag after completion
+        self.backup_active = False
+
     @app_commands.command(name="panic_stop", description="Stop the ongoing backup process immediately.")
     async def panic_stop(self, interaction: discord.Interaction):
+        if not self.backup_active:
+            await interaction.response.send_message("No backup is currently running.", ephemeral=True)
+            return
         self.stop_requested = True
-        await interaction.response.send_message("Panic stop initiated. The backup process will halt soon.",
-                                                ephemeral=True)
+        await interaction.response.send_message("Panic stop initiated. The backup process will halt soon.", ephemeral=True)
 
     async def process_backup(self, interaction: discord.Interaction, channels):
         await interaction.followup.send("Starting backup process...", ephemeral=True)
 
         for channel in channels:
+            # Check for panic stop request
             if self.stop_requested:
                 await interaction.followup.send("Backup process was stopped by panic button.", ephemeral=True)
                 return
 
             try:
                 async for message in channel.history(limit=None, oldest_first=True):
+                    # Check for panic stop request during iteration
                     if self.stop_requested:
                         await interaction.followup.send("Backup process was stopped by panic button.", ephemeral=True)
                         return
@@ -85,7 +95,7 @@ class BackupCog(commands.Cog):
                     if message.author.id != JOHAN_USER_ID or not message.attachments:
                         continue
 
-                    media_urls = [att.url for att in message.attachments][:3]  # limit to 3 media
+                    media_urls = [att.url for att in message.attachments][:3]
                     if not media_urls:
                         continue
 
@@ -137,9 +147,7 @@ class BackupCog(commands.Cog):
 
                         user_numbers = re.findall(r"\d+", content)
                         if not user_numbers:
-                            await interaction.followup.send("No valid day numbers provided. Skipping message.",
-                                                            ephemeral=True)
-                            # No continue here needed; naturally proceeds to next message
+                            await interaction.followup.send("No valid day numbers provided. Skipping message.", ephemeral=True)
                         else:
                             if len(user_numbers) >= 2 and len(media_urls) >= 2:
                                 days = [int(num) for num in user_numbers][:len(media_urls)]
@@ -150,7 +158,6 @@ class BackupCog(commands.Cog):
                                         archive_daily_johan_db(day, message, [media_url], confirmed=True)
                                     except Exception:
                                         pass
-                                # Continue to next message after series archiving
                             else:
                                 day = int(user_numbers[0])
                                 if not get_existing_message_for_day(day):
@@ -159,19 +166,15 @@ class BackupCog(commands.Cog):
                                     except Exception:
                                         pass
                     except asyncio.TimeoutError:
-                        await interaction.followup.send("Timed out waiting for response. Skipping message.",
-                                                        ephemeral=True)
-                        # Skip to next message after timeout
+                        await interaction.followup.send("Timed out waiting for response. Skipping message.", ephemeral=True)
                         continue
 
             except discord.Forbidden:
-                await interaction.followup.send(f"Missing permissions to read history in channel {channel.mention}.",
-                                                ephemeral=True)
+                await interaction.followup.send(f"Missing permissions to read history in channel {channel.mention}.", ephemeral=True)
             except Exception as e:
                 await interaction.followup.send(f"An error occurred in channel {channel.mention}: {e}", ephemeral=True)
 
         await interaction.followup.send("Backup process completed.", ephemeral=True)
-
 
 async def setup(bot):
     await bot.add_cog(BackupCog(bot))
