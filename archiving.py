@@ -201,12 +201,16 @@ class ArchivingCog(commands.Cog):
         except Exception as e:
             await message.channel.send(get_dialogue("deletion_error", error=e))
 
-    @app_commands.command(name="archive_series", description="Archive a message for multiple days.")
-    async def archive_series(self, interaction: discord.Interaction, message_id: str, days: str):
+    @app_commands.command(name="manual_archive", description="Manually archive a message for one or more days.")
+    async def manual_archive(self, interaction: discord.Interaction, message_id: str, days: str):
         """
-        Archive a single message for multiple days.
+        Manually archive a single message for one or multiple days.
         - message_id: The ID of the message containing images.
         - days: Space or comma-separated list of day numbers (e.g., "5,6,7" or "5 6 7").
+
+        Supports:
+        - One-to-one assignment: Each image to a different day.
+        - Multiple-to-one assignment: Multiple images for a single day (if only one day is specified).
         """
         await interaction.response.defer(ephemeral=True)
         try:
