@@ -29,8 +29,8 @@ async def on_ready():
         print(f"Failed to sync commands: {e}")
 
 
-# Context Menu: Archive Daily Johan
-@bot.tree.context_menu(name="Archive Daily Johan")
+# Context Menu: Manual Archive Daily Johan
+@bot.tree.context_menu(name="Manual Archive Daily Johan")
 async def archive_daily_johan_context_menu(interaction: discord.Interaction, message: discord.Message):
     # Attempt automatic scanning for day numbers in the message content
     numbers_found = re.findall(r"\d+", message.content)
@@ -41,8 +41,7 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
         await interaction.response.send_message("No media found in the selected message.", ephemeral=True)
         return
 
-    # If numbers are found and they match the number of attachments,
-    # proceed with automatic assignment.
+    # If numbers are found:
     if numbers_found:
         day_numbers = [int(num) for num in numbers_found]
 
@@ -67,10 +66,10 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
                 ephemeral=True
             )
             return
-        # If one day number found and multiple attachments exist (<= 3):
+
+        # If one day number found and multiple attachments exist (multiple-to-one scenario):
         elif len(day_numbers) == 1 and len(media_urls) <= 3:
             day = day_numbers[0]
-            # Check for existing media as before...
             try:
                 archive_daily_johan_db(day, message, media_urls, confirmed=True)
                 await interaction.response.send_message(
@@ -80,16 +79,16 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
             except ValueError as ve:
                 await interaction.response.send_message(str(ve), ephemeral=True)
             return
+
         # If multiple numbers found but don't match attachments count or other issues arise:
         else:
             await interaction.response.send_message(
-                "Mismatch between the detected numbers and the number of attachments or multiple numbers detected. "
+                "Mismatch between detected numbers and attachments or multiple numbers detected. "
                 "Please manually input the correct day number(s).",
                 ephemeral=True
             )
-            # Fall through to manual input prompt below.
 
-    # Fallback: Prompt for manual input if automatic scanning didn't succeed or encountered issues.
+    # Fallback: Prompt for manual input if automatic scanning didn't succeed
     await interaction.response.send_message(
         "Automatic scanning was inconclusive. Please enter the day number(s) for this Daily Johan (separated by spaces or commas).",
         ephemeral=True
@@ -110,7 +109,7 @@ async def archive_daily_johan_context_menu(interaction: discord.Interaction, mes
             await response.delete()
             return
 
-        # Recalculate attachments and media URLs in case message context is needed
+        # Recalculate attachments and media URLs
         media_attachments = message.attachments
         media_urls = [attachment.url for attachment in media_attachments]
 
