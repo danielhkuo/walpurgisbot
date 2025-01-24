@@ -1,65 +1,67 @@
 # Walpurgis Bot
 
-This bot automates the archiving, management, and verification of daily image posts by a specific user (Johan). It includes features for automatic detection, manual overrides, status reporting, deletion, and scheduled reminders. The bot uses Discord's application commands, context menus, and scheduled tasks, along with an SQLite database for persistence.
+Walpurgis Bot automates the archiving, management, and verification of daily image posts by a specific user (Johan) on Discord. It supports automatic detection, manual overrides, status reporting, deletion, and scheduled reminders, utilizing Discord's application commands and context menus alongside an SQLite database for data persistence.
 
-## Features
+## Commands
 
-### Automatic Archiving
-- **Message Listener**: Listens for messages from Johan containing images.
-- **Day Number Detection**: 
-  - Scans message content for day numbers using regex.
-  - Handles cases with multiple numbers, recent posts, or incorrect next day numbers.
-- **Checks Before Archiving**:
-  1. If multiple numbers are found, prompts manual submission.
-  2. If the message is less than 12 hours old, requests manual confirmation.
-  3. If the detected day isn't the immediate next expected number, alerts for manual verification.
-- **Archiving**: If conditions are met, archives the image and associated day number into an SQLite database.
-- **Public Notifications**: Sends public messages in the channel for warnings, errors, or confirmations during automatic archiving.
+### Slash Commands
 
-### Archive Series Command
-- **Slash Command**: `/archive_series`
-  - **Parameters**:
-    - `message_id`: The ID of a message containing images.
-    - `days`: Comma-separated list of day numbers.
-  - **Function**: Archives the specified message for each provided day number using the same logic as automatic archiving.
+#### `/manual_archive`
+**Description:**  
+Manually archive a message for one or more days.
 
-### Deletion
-- **Context Menu Command**: "Delete Daily Johan"
-  - **Function**: When right-clicking a message, the bot:
-    - Finds all archived days associated with that message.
-    - Lists these days and asks for confirmation.
-    - Deletes all related entries from the database upon confirmation.
-- **Handles Multiple Entries**: Accounts for cases where one message is associated with multiple days.
+**Parameters:**
+- `message_id` *(string, required)*: The ID of the message containing images to archive.
+- `days` *(string, required)*: Space or comma-separated list of day numbers (e.g., "5,6,7" or "5 6 7").
 
-### Status Reporting
-- **Slash Command**: `/daily_johan_status`
-  - **Parameters**:
-    - `start`: Starting day number (default 1).
-    - `end`: Ending day number (optional; if omitted, uses the latest day in the database).
-  - **Function**: Displays a paginated list of days with their status (✅ for archived, ❌ for missing).
-  - **Pagination**: 
-    - Limits to 20 days per page.
-    - Provides "Previous" and "Next" buttons to navigate pages.
+**Usage Example:**
+```
+/manual_archive message_id:123456789012345678 days:5,6,7
+```
 
-### Daily Check & Reminders
-- **Dedicated Cog**: `DailyCheckCog`
-- **Scheduled Task**:
-  - Runs every 24 hours.
-  - Checks if the latest daily entry is missing or if there are gaps.
-  - **Public Reminders**:
-    - If a new Daily Johan is missing, pings Johan publicly in a designated channel.
-    - Alerts publicly if there's a gap in daily entries.
+**Functionality:**  
+Archives the specified message for each provided day number. Supports:
+- **One-to-One Assignment:** Each image is assigned to a different day.
+- **Multiple-to-One Assignment:** Multiple images are assigned to a single day if only one day is specified.
 
-## Architecture and Modules
+#### `/daily_johan_status`
+**Description:**  
+Displays the archiving status of Daily Johans within a specified range.
 
-- **Cogs**: The bot is modular, with separate cogs for archiving, deletion, status reporting, and daily checks.
-- **Database Module** (`database.py`): Centralizes database operations such as initializing the database, archiving entries, fetching existing records, and deleting records.
-- **Commands & Interactions**: Uses Discord's application commands and context menus for interactive functionality.
-- **Scheduling**: Uses `discord.ext.tasks` to schedule daily checks and reminders.
+**Parameters:**
+- `start` *(integer, optional)*: Starting day number (default is 1).
+- `end` *(integer, optional)*: Ending day number. If omitted, the latest day in the database is used.
 
-## Setup and Configuration
+**Usage Example:**
+```
+/daily_johan_status start:1 end:10
+```
 
-**Docker Compose Option**
+**Functionality:**  
+Provides a paginated list indicating which days have been archived (✅) and which are missing (❌). Navigate through pages using "Previous" and "Next" buttons.
+
+### Context Menu Commands
+
+#### "Delete Daily Johan"
+**Description:**  
+Deletes all archived entries associated with a specific message.
+
+**Functionality:**  
+1. **Trigger:** Right-click on a message and select "Delete Daily Johan."
+2. **Process:** 
+   - Identifies all day numbers linked to the selected message.
+   - Prompts for confirmation.
+   - Upon confirmation, deletes all related entries from the database.
+
+**Note:**  
+Handles cases where a single message is associated with multiple days.
+
+## Docker Compose Deployment
+
+Deploying Walpurgis Bot using Docker Compose streamlines the setup process. Below is the configuration required to get your bot up and running.
+
+### `docker-compose.yml`
+
 ```yaml
 version: '3'
 services:
@@ -68,31 +70,117 @@ services:
     environment:
       - TOKEN=your_discord_bot_token
       - DEFAULT_CHANNEL_ID=your_default_channel_id
-      - JOHAN_USER_ID="johan"_user_id
+      - JOHAN_USER_ID=your_johan_user_id
+      - TIMEZONE=America/Chicago  # Optional: Set your desired timezone
+    volumes:
+      - ./data:/app/data  # Persist the SQLite database
     restart: unless-stopped
 ```
 
+### Environment Variables
 
-1. **Environment Variables (for use in development)**:
-   - Use a `.env` file to store sensitive information like the bot token.
-   - Example:
+- **`TOKEN`** *(string, required)*:  
+  Your Discord bot token. **Keep this secure** and **never share it publicly**.
+
+- **`DEFAULT_CHANNEL_ID`** *(integer, required)*:  
+  The Discord channel ID where the bot will send reminders and public notifications.
+
+- **`JOHAN_USER_ID`** *(integer, required)*:  
+  The Discord user ID of Johan, whose messages the bot will monitor and archive.
+
+- **`TIMEZONE`** *(string, optional)*:  
+  The IANA timezone string to configure the bot's timezone settings (default is `America/Chicago`).  
+  **Examples:**
+  - `America/New_York`
+  - `Europe/London`
+  - `Asia/Tokyo`
+
+### Deployment Steps
+
+1. **Install Docker and Docker Compose:**  
+   Ensure Docker and Docker Compose are installed on your system. Download them from the [official Docker website](https://www.docker.com/get-started) if necessary.
+
+2. **Create `docker-compose.yml`:**  
+   Save the above Docker Compose configuration into a file named `docker-compose.yml` in your project directory.
+
+3. **Configure Environment Variables:**  
+   Replace the placeholder values with your actual Discord bot token, channel ID, Johan's user ID, and desired timezone.
+
+4. **Deploy the Bot:**  
+   Open a terminal in your project directory and run:
+   ```bash
+   docker-compose up -d
+   ```
+   This command will pull the latest Docker image from GitHub Container Registry, create the container, and start the bot in detached mode.
+
+5. **Verify Deployment:**  
+   Check the logs to ensure the bot is running correctly:
+   ```bash
+   docker-compose logs -f walpurgisbot
+   ```
+   Look for messages indicating that the bot has successfully logged in and is operational.
+
+6. **Manage the Bot:**
+   - **Stop the Bot:**
+     ```bash
+     docker-compose stop walpurgisbot
+     ```
+   - **Restart the Bot:**
+     ```bash
+     docker-compose restart walpurgisbot
+     ```
+   - **Remove the Bot:**
+     ```bash
+     docker-compose down
+     ```
+
+---
+
+## Setup and Configuration (Development)
+
+**Note:** These steps are for setting up the bot in a development environment.
+
+1. **Environment Variables:**
+   - Create a `.env` file in your project root to store sensitive information:
      ```
      TOKEN=your_discord_bot_token
+     DEFAULT_CHANNEL_ID=your_default_channel_id
+     JOHAN_USER_ID=your_johan_user_id
+     TIMEZONE=America/Chicago
      ```
-2. **Database**:
-   - The bot uses an SQLite database (`daily_johans.db`) to store archived entries.
-   - The database is initialized automatically upon bot startup.
+   - Ensure your development environment loads these variables appropriately.
 
-3. **User and Channel IDs (Must change for use in a different server!)**:
-   - Update constants like `JOHAN_USER_ID` and `DEFAULT_CHANNEL_ID` in the code with the appropriate Discord user and channel IDs.
+2. **Install Dependencies:**
+   - Activate your virtual environment:
+     ```bash
+     source venv/bin/activate
+     ```
+   - Install required packages:
+     ```bash
+     pip install -r requirements.txt
+     ```
 
-4. **Loading Cogs**:
-   - The main bot file loads all cogs on startup, ensuring modular features are initialized.
+3. **Database Initialization:**
+   - The SQLite database (`daily_johans.db`) initializes automatically upon the bot's first run.
+
+4. **Load Cogs:**
+   - Ensure all cog files are placed in the `cogs/` directory and are being loaded in `bot.py`.
+
+---
 
 ## Usage
 
-- **Automatic Archiving**: Simply have Johan post images normally. The bot will automatically detect and archive them based on the logic defined.
-- **Manual Override for Archive Series**: Use the `/archive_series` command when a single message should cover multiple days.
-- **Deleting Entries**: Right-click on a message and select "Delete Daily Johan" to remove all associated daily records.
-- **Checking Status**: Use the `/daily_johan_status` command to view which days have been archived and navigate through pages.
-- **Daily Reminders**: The bot will automatically send public reminders if a new Daily Johan is missing or if there's a gap.
+- **Automatic Archiving:**  
+  Have Johan post images normally. The bot will automatically detect and archive them based on the defined logic.
+
+- **Manual Archiving:**  
+  Use the `/manual_archive` command to manually archive specific messages for one or multiple days.
+
+- **Deleting Entries:**  
+  Right-click on a message and select "Delete Daily Johan" to remove all associated daily records.
+
+- **Checking Status:**  
+  Use the `/daily_johan_status` command to view which days have been archived and navigate through pages.
+
+- **Daily Reminders:**  
+  The bot automatically sends public reminders if a new Daily Johan is missing or if there's a gap in entries.
