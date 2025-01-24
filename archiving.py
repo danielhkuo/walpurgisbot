@@ -9,7 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from config import JOHAN_USER_ID
+from config import JOHAN_USER_ID, DEFAULT_CHANNEL_ID  # Ensure DEFAULT_CHANNEL_ID is imported if needed
 from database import init_db, archive_daily_johan_db, get_existing_message_for_day
 from dialogues import get_dialogue
 
@@ -23,6 +23,11 @@ class ArchivingCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         await self.bot.process_commands(message)
+
+        # **Add this check to ensure only Johan's messages are processed**
+        if message.author.id != self.JOHAN_USER_ID:
+            return
+
         if not message.attachments:  # Skip processing if no media attached
             return
 
@@ -207,10 +212,6 @@ class ArchivingCog(commands.Cog):
         Manually archive a single message for one or multiple days.
         - message_id: The ID of the message containing images.
         - days: Space or comma-separated list of day numbers (e.g., "5,6,7" or "5 6 7").
-
-        Supports:
-        - One-to-one assignment: Each image to a different day.
-        - Multiple-to-one assignment: Multiple images for a single day (if only one day is specified).
         """
         await interaction.response.defer(ephemeral=True)
         try:
