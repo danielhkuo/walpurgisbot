@@ -211,6 +211,7 @@ async def load_cogs():
     await bot.load_extension("search")
     await bot.load_extension("persona")
     await bot.load_extension("backup")
+    await bot.load_extension("db_manage")
 
 
 async def main():
