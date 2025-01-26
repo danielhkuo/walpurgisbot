@@ -16,6 +16,7 @@ from dialogues import get_dialogue
 
 logger = logging.getLogger(__name__)
 
+
 class ArchiveDailyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -195,9 +196,9 @@ class ArchiveDailyCog(commands.Cog):
 
             def check_verification(m):
                 return (
-                    m.author.id == self.JOHAN_USER_ID
-                    and m.channel == message.channel
-                    and m.content.lower() in ["yes", "no", "y", "n"]
+                        m.author.id == self.JOHAN_USER_ID
+                        and m.channel == message.channel
+                        and m.content.lower() in ["yes", "no", "y", "n"]
                 )
 
             try:
@@ -233,7 +234,8 @@ class ArchiveDailyCog(commands.Cog):
                                     return
                             except asyncio.TimeoutError:
                                 await message.channel.send("No response received from Johan.")
-                                logger.warning(f"Timeout waiting for new day number from Johan for message ID {message.id}.")
+                                logger.warning(
+                                    f"Timeout waiting for new day number from Johan for message ID {message.id}.")
                                 return
                         else:
                             return
@@ -358,6 +360,7 @@ class ArchiveDailyCog(commands.Cog):
     @daily_reminder.before_loop
     async def before_daily_reminder(self):
         await self.bot.wait_until_ready()
+
 
 async def setup(bot):
     await bot.add_cog(ArchiveDailyCog(bot))
