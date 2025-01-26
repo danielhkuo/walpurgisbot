@@ -2,10 +2,13 @@
 
 import sqlite3
 from datetime import datetime
+
 import pytz
+
 from config import TIMEZONE
 
 DB_FILE = "daily_johans.db"
+
 
 def init_db():
     """
@@ -28,6 +31,7 @@ def init_db():
             )
         """)
         conn.commit()
+
 
 def archive_daily_johan_db(day_number, message, media_urls, confirmed=True):
     """
@@ -113,6 +117,7 @@ def archive_daily_johan_db(day_number, message, media_urls, confirmed=True):
             ))
         conn.commit()
 
+
 def get_existing_day_for_message(message_id):
     """
     Retrieve the day number associated with a given message ID.
@@ -127,6 +132,7 @@ def get_existing_day_for_message(message_id):
         cursor = conn.cursor()
         cursor.execute("SELECT day FROM daily_johans WHERE message_id = ?", (str(message_id),))
         return cursor.fetchone()
+
 
 def get_existing_message_for_day(day_number):
     """
@@ -143,6 +149,7 @@ def get_existing_message_for_day(day_number):
         cursor.execute("SELECT message_id FROM daily_johans WHERE day = ?", (day_number,))
         return cursor.fetchone()
 
+
 def delete_daily_johan_by_message_id(message_id):
     """
     Delete a Daily Johan entry based on the message ID.
@@ -154,6 +161,7 @@ def delete_daily_johan_by_message_id(message_id):
         cursor = conn.cursor()
         cursor.execute("DELETE FROM daily_johans WHERE message_id = ?", (str(message_id),))
         conn.commit()
+
 
 def search_daily_johan(day_number):
     """
@@ -173,3 +181,66 @@ def search_daily_johan(day_number):
             WHERE day = ?
         """, (day_number,))
         return cursor.fetchall()
+
+
+def insert_bulk_daily_johans(data):
+    """
+    Insert multiple Daily Johan entries into the database.
+
+    Args:
+        data (list of dict): List of dictionaries containing Daily Johan data.
+
+    Raises:
+        ValueError: If the data format is incorrect.
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        for record in data:
+            day = record.get("day")
+            message_id = record.get("message_id")
+            channel_id = record.get("channel_id")
+            timestamp = record.get("timestamp")
+            media_url1 = record.get("media_url1")
+            media_url2 = record.get("media_url2")
+            media_url3 = record.get("media_url3")
+            user_id = record.get("user_id")
+            user_mention = record.get("user_mention")
+            confirmed = record.get("confirmed", True)
+
+            if not day or not message_id or not channel_id or not timestamp or not user_id or not user_mention:
+                raise ValueError("Missing required fields in data.")
+
+            # Check if the day already exists
+            cursor.execute("SELECT * FROM daily_johans WHERE day = ?", (day,))
+            if cursor.fetchone():
+                # Optionally, skip or update existing records
+                # Here, we'll skip existing records
+                continue
+
+            cursor.execute("""
+                INSERT INTO daily_johans 
+                (day, message_id, channel_id, timestamp, media_url1, media_url2, media_url3, user_id, user_mention, confirmed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                day,
+                message_id,
+                channel_id,
+                timestamp,
+                media_url1,
+                media_url2,
+                media_url3,
+                user_id,
+                user_mention,
+                confirmed
+            ))
+        conn.commit()
+
+
+def clear_daily_johans_table():
+    """
+    Clears all records from the daily_johans table.
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM daily_johans")
+        conn.commit()
