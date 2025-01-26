@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sqlite3
+from io import BytesIO  # Import BytesIO from the io module
 
 import discord
 from discord import app_commands
@@ -49,8 +50,8 @@ class DBManageCog(commands.Cog):
             await interaction.followup.send(f"Failed to serialize data to JSON: {e}", ephemeral=True)
             return
 
-        # Create a Discord file
-        file = discord.File(fp=discord.BytesIO(json_data.encode()), filename="daily_johans_export.json")
+        # Create a Discord file using BytesIO
+        file = discord.File(fp=BytesIO(json_data.encode()), filename="daily_johans_export.json")
 
         # Send the file via DM
         try:
