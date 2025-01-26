@@ -12,7 +12,7 @@ from dialogues import get_dialogue
 class DeletionCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.DB_FILE = "daily_johans.db"
+        self.DB_FILE = "../daily_johans.db"
 
     @app_commands.command(name="delete_daily_johan", description="Delete a Daily Johan by day number or message link.")
     async def delete_daily_johan(self, interaction: discord.Interaction, day: Optional[int] = None,

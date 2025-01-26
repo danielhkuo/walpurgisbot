@@ -10,7 +10,7 @@ from dialogues import get_dialogue
 class SearchCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.DB_FILE = "daily_johans.db"
+        self.DB_FILE = "../daily_johans.db"
 
     @app_commands.command(name="search_daily_johan", description="Search for a Daily Johan by day number.")
     async def search_daily_johan(self, interaction: discord.Interaction, day: int):

@@ -203,15 +203,15 @@ async def delete_daily_johan_context_menu(interaction: discord.Interaction, mess
 
 async def load_cogs():
     # Load all necessary cogs
-    await bot.load_extension("archiving")
-    await bot.load_extension("deletion")
-    await bot.load_extension("status")
-    await bot.load_extension("fun")
-    await bot.load_extension("dailycheck")
-    await bot.load_extension("search")
-    await bot.load_extension("persona")
-    await bot.load_extension("backup")
-    await bot.load_extension("db_manage")
+    await bot.load_extension("cogs.archiving")
+    await bot.load_extension("cogs.deletion")
+    await bot.load_extension("cogs.status")
+    await bot.load_extension("cogs.fun")
+    await bot.load_extension("cogs.dailycheck")
+    await bot.load_extension("cogs.search")
+    await bot.load_extension("cogs.persona")
+    await bot.load_extension("cogs.backup")
+    await bot.load_extension("cogs.db_manage")
 
 
 async def main():

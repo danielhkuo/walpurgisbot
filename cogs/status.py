@@ -93,7 +93,7 @@ class StatusPaginator(View):
 class StatusCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.DB_FILE = "daily_johans.db"
+        self.DB_FILE = "../daily_johans.db"
 
     @app_commands.command(name="daily_johan_status", description="Check the status of Daily Johans in a range of days.")
     async def daily_johan_status(self, interaction: discord.Interaction, start: int = 1, end: Optional[int] = None):

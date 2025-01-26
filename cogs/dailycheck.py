@@ -45,7 +45,7 @@ class DailyCheckCog(commands.Cog):
             await asyncio.sleep(60)
 
     async def send_daily_reminder(self):
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect("../daily_johans.db") as conn:
             cursor = conn.cursor()
             # Fetch the latest archived day and its timestamp
             cursor.execute("SELECT MAX(day), timestamp FROM daily_johans WHERE day IS NOT NULL")
@@ -98,7 +98,7 @@ class DailyCheckCog(commands.Cog):
         await asyncio.sleep(wait_seconds)
 
         # After waiting, perform the reminder
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect("../daily_johans.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(day) FROM daily_johans")
             result = cursor.fetchone()
@@ -107,7 +107,7 @@ class DailyCheckCog(commands.Cog):
         expected_day = latest_day + 1
 
         # Fetch all archived days up to latest_day
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect("../daily_johans.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT day FROM daily_johans WHERE day <= ?", (latest_day,))
             archived_days = {row[0] for row in cursor.fetchall()}

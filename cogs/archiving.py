@@ -37,7 +37,7 @@ class ArchivingCog(commands.Cog):
             return
 
         # Determine next expected day
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect("../daily_johans.db") as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(day) FROM daily_johans")
             result = cursor.fetchone()
@@ -265,7 +265,7 @@ class ArchivingCog(commands.Cog):
                 day = day_list[0]
                 # Check if the day already exists
                 existing_media = []
-                with sqlite3.connect("daily_johans.db") as conn:
+                with sqlite3.connect("../daily_johans.db") as conn:
                     cursor = conn.cursor()
                     cursor.execute("SELECT media_url1, media_url2, media_url3 FROM daily_johans WHERE day = ?", (day,))
                     result = cursor.fetchone()

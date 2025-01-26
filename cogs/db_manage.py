@@ -33,7 +33,7 @@ class DBManageCog(commands.Cog):
 
         # Fetch data from the database
         try:
-            with sqlite3.connect("daily_johans.db") as conn:
+            with sqlite3.connect("../daily_johans.db") as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM daily_johans")
                 rows = cursor.fetchall()
