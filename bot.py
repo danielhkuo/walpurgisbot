@@ -1,3 +1,5 @@
+# bot.py
+
 import asyncio
 import os
 import re
@@ -202,16 +204,21 @@ async def delete_daily_johan_context_menu(interaction: discord.Interaction, mess
 
 
 async def load_cogs():
-    # Load all necessary cogs
-    await bot.load_extension("cogs.archiving")
-    await bot.load_extension("cogs.deletion")
-    await bot.load_extension("cogs.status")
-    await bot.load_extension("cogs.fun")
-    await bot.load_extension("cogs.dailycheck")
-    await bot.load_extension("cogs.search")
-    await bot.load_extension("cogs.persona")
-    await bot.load_extension("cogs.backup")
-    await bot.load_extension("cogs.db_manage")
+    # Load all necessary cogs with correct paths based on actual filenames
+    # Ensure that the cog filenames match these names without the .py extension
+    try:
+        await bot.load_extension("cogs.archive_daily")
+        await bot.load_extension("cogs.archive_manual")
+        await bot.load_extension("cogs.deletion")
+        await bot.load_extension("cogs.status")
+        await bot.load_extension("cogs.fun")
+        await bot.load_extension("cogs.search")
+        await bot.load_extension("cogs.persona")
+        await bot.load_extension("cogs.backup")
+        await bot.load_extension("cogs.db_manage")
+        print("All cogs loaded successfully.")
+    except Exception as e:
+        print(f"Failed to load cogs: {e}")
 
 
 async def main():
