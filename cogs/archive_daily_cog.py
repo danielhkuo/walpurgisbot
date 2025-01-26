@@ -1,7 +1,7 @@
 # cogs/archive_daily_cog.py
 
 import asyncio
-import logging  # Import logging
+import logging
 import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -10,26 +10,11 @@ import discord
 import pytz
 from discord.ext import commands, tasks
 
-from config import JOHAN_USER_ID, DEFAULT_CHANNEL_ID, TIMEZONE
+from config import JOHAN_USER_ID, DEFAULT_CHANNEL_ID, TIMEZONE, DB_FILE
 from database import init_db, archive_daily_johan_db, get_existing_message_for_day
 from dialogues import get_dialogue
 
-# Configure logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)  # Set desired logging level
-
-# Create console handler and set level
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-
-# Create formatter and add to handler
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-
-# Add handler to logger
-if not logger.handlers:
-    logger.addHandler(ch)
-
 
 class ArchiveDailyCog(commands.Cog):
     def __init__(self, bot):
@@ -37,7 +22,7 @@ class ArchiveDailyCog(commands.Cog):
         self.JOHAN_USER_ID = JOHAN_USER_ID
         self.DEFAULT_CHANNEL_ID = DEFAULT_CHANNEL_ID
         self.TIMEZONE = TIMEZONE
-        self.last_archive_time = None  # Tracks the last archive timestamp
+        self.last_archive_time = None
         init_db()
         self.daily_reminder.start()
 
@@ -64,7 +49,7 @@ class ArchiveDailyCog(commands.Cog):
             return
 
         # Determine next expected day
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(day) FROM daily_johans")
             result = cursor.fetchone()
@@ -77,21 +62,19 @@ class ArchiveDailyCog(commands.Cog):
         if self.last_archive_time:
             time_diff = now - self.last_archive_time
             if time_diff < timedelta(hours=12):
-                # Send DM to Johan about cooldown
                 try:
                     await message.author.send(
                         f"**Cooldown Active:** Please wait {timedelta(hours=12) - time_diff} before archiving another Daily Johan."
                     )
-                    logger.info(f"Cooldown active. Sent DM to user ID {JOHAN_USER_ID}.")
+                    logger.info(f"Cooldown active. Sent DM to user ID {self.JOHAN_USER_ID}.")
                 except discord.Forbidden:
-                    # If DMs are disabled
                     await message.channel.send(
                         f"{message.author.mention}, I can't send you a DM. Please allow DMs from server members."
                     )
-                    logger.warning(f"Failed to send DM to user ID {JOHAN_USER_ID}.")
+                    logger.warning(f"Failed to send DM to user ID {self.JOHAN_USER_ID}.")
                 return
 
-        # Attempt to find day numbers in the message caption
+        # Attempt to find day numbers
         numbers_found = re.findall(r"\d+", message.content)
         match = re.search(
             r"(?:Day\s*#?|\#|daily\s+johan\s+|johan\s+)(\d+)|(^\d+$)",
@@ -99,15 +82,13 @@ class ArchiveDailyCog(commands.Cog):
             re.IGNORECASE
         )
 
-        # SERIES ARCHIVING: If multiple numbers and multiple media attachments detected
+        # MULTI-DAY SCENARIO
         if len(numbers_found) >= 2 and len(media_urls) >= 2:
             day_numbers = [int(num) for num in numbers_found[:len(media_urls)]]
             archived_days = []
             for day, media_url in zip(day_numbers, media_urls):
                 if get_existing_message_for_day(day):
-                    await message.channel.send(
-                        get_dialogue("day_already_archived", day=day)
-                    )
+                    await message.channel.send(get_dialogue("day_already_archived", day=day))
                     logger.info(f"Day {day} already archived. Skipping.")
                     continue
                 try:
@@ -129,6 +110,7 @@ class ArchiveDailyCog(commands.Cog):
         bypass_time_check = False
 
         if not match:
+            # Prompt user
             await message.channel.send(
                 get_dialogue("ask_if_daily_johan", user=self.JOHAN_USER_ID, msg_id=message.id)
             )
@@ -143,7 +125,7 @@ class ArchiveDailyCog(commands.Cog):
                 logger.debug(f"Received reply from Johan: {reply_content}")
                 if reply_content in ["no", "n"]:
                     logger.info(f"Johan indicated message ID {message.id} is not a Daily Johan.")
-                    return  # Not a Daily Johan
+                    return
 
                 # Extract numbers from reply
                 numbers_in_reply = re.findall(r"\d+", reply.content)
@@ -153,9 +135,7 @@ class ArchiveDailyCog(commands.Cog):
                         archived_days = []
                         for day, media_url in zip(day_numbers, media_urls):
                             if get_existing_message_for_day(day):
-                                await message.channel.send(
-                                    get_dialogue("day_already_archived", day=day)
-                                )
+                                await message.channel.send(get_dialogue("day_already_archived", day=day))
                                 logger.info(f"Day {day} already archived. Skipping.")
                                 continue
                             try:
@@ -173,14 +153,13 @@ class ArchiveDailyCog(commands.Cog):
                             self.last_archive_time = now
                         return
                     else:
-                        # Assume single day if only one number or conditions for series are not met
                         day_number = int(numbers_in_reply[0])
                         bypass_time_check = True
-                        logger.debug(f"Assumed single day: {day_number}")
                 else:
                     await message.channel.send(get_dialogue("couldnt_parse_reply"))
-                    logger.warning(f"Could not parse reply content from Johan for message ID {message.id}.")
+                    logger.warning(f"Could not parse reply content for message ID {message.id}.")
                     return
+
             except asyncio.TimeoutError:
                 await message.channel.send("No response received from Johan.")
                 logger.warning(f"Timeout waiting for reply from Johan for message ID {message.id}.")
@@ -194,47 +173,45 @@ class ArchiveDailyCog(commands.Cog):
                 logger.error(f"Parse error for day number in message ID {message.id}.")
                 return
 
-        # If multiple numbers found outside series context, request manual submission
+        # If multiple numbers found (but not multi-day scenario), ask manual submission
         if len(numbers_found) > 1:
             await message.channel.send(get_dialogue("multiple_numbers"))
-            logger.info(f"Multiple numbers found in message ID {message.id}. Requested manual submission.")
+            logger.info(f"Multiple numbers found in message ID {message.id}; requested manual submission.")
             return
 
-        # Conditionally perform time check only if not bypassed by manual input
+        # Time check (unless bypassed)
         if not bypass_time_check:
             time_diff = now - message.created_at
-
-            # Check if the post is too recent (<12 hours), unless it's day 1
             is_first_day = (latest_day == 0 and day_number == 1)
             if time_diff < timedelta(hours=12) and not is_first_day:
                 await message.channel.send(get_dialogue("recent_post"))
                 logger.info(f"Message ID {message.id} posted too recently. 12-hour cooldown active.")
                 return
 
-        # Verification for unexpected day number
+        # If day is unexpected, ask for verification
         if day_number != expected_next:
-            await message.channel.send(
-                get_dialogue("verification_prompt", provided=day_number)
-            )
+            await message.channel.send(get_dialogue("verification_prompt", provided=day_number))
             logger.info(f"Day number {day_number} does not match expected day {expected_next}.")
 
             def check_verification(m):
-                return (m.author.id == self.JOHAN_USER_ID and
-                        m.channel == message.channel and
-                        m.content.lower() in ["yes", "no", "y", "n"])
+                return (
+                    m.author.id == self.JOHAN_USER_ID
+                    and m.channel == message.channel
+                    and m.content.lower() in ["yes", "no", "y", "n"]
+                )
 
             try:
                 verification_reply = await self.bot.wait_for("message", timeout=60.0, check=check_verification)
                 verification_response = verification_reply.content.strip().lower()
-                logger.debug(f"Received verification reply from Johan: {verification_response}")
+                logger.debug(f"Received verification reply: {verification_response}")
                 if verification_response in ["yes", "y"]:
-                    await message.channel.send(
-                        get_dialogue("verification_accepted", provided=day_number)
-                    )
+                    await message.channel.send(get_dialogue("verification_accepted", provided=day_number))
                     logger.info(f"Johan accepted the day number {day_number}.")
                 else:
                     await message.channel.send(get_dialogue("verification_denied"))
                     logger.info(f"Johan denied the day number {day_number}.")
+
+                    # Additional logic to re-ask
                     await message.channel.send(
                         get_dialogue("ask_if_daily_johan", user=self.JOHAN_USER_ID, msg_id=message.id)
                     )
@@ -252,32 +229,30 @@ class ArchiveDailyCog(commands.Cog):
                                     logger.debug(f"Received new day number {day_number} from Johan.")
                                 else:
                                     await message.channel.send(get_dialogue("couldnt_parse_reply"))
-                                    logger.warning(
-                                        f"Could not parse new day number from Johan for message ID {message.id}.")
+                                    logger.warning(f"Could not parse new day from Johan for message {message.id}.")
                                     return
                             except asyncio.TimeoutError:
                                 await message.channel.send("No response received from Johan.")
-                                logger.warning(
-                                    f"Timeout waiting for new day number from Johan for message ID {message.id}.")
+                                logger.warning(f"Timeout waiting for new day number from Johan for message ID {message.id}.")
                                 return
                         else:
                             return
                     except asyncio.TimeoutError:
                         await message.channel.send("No response received from Johan.")
-                        logger.warning(f"Timeout waiting for secondary reply from Johan for message ID {message.id}.")
+                        logger.warning(f"Timeout waiting for secondary reply from Johan for msg ID {message.id}.")
                         return
             except asyncio.TimeoutError:
                 await message.channel.send("No response received from Johan.")
-                logger.warning(f"Timeout waiting for verification reply from Johan for message ID {message.id}.")
+                logger.warning(f"Timeout waiting for verification reply from Johan for msg ID {message.id}.")
                 return
 
-        # Check for duplicate archive for a single day
+        # Check for duplicates
         if get_existing_message_for_day(day_number):
             await message.channel.send(get_dialogue("day_already_archived", day=day_number))
             logger.info(f"Day {day_number} already archived. Skipping.")
             return
 
-        # Proceed with single-day archiving using up to 3 media attachments
+        # Single-day archiving
         try:
             archive_daily_johan_db(day_number, message, media_urls, confirmed=True)
             await message.channel.send(get_dialogue("auto_archived", day=day_number))
@@ -290,13 +265,12 @@ class ArchiveDailyCog(commands.Cog):
             await message.channel.send(get_dialogue("deletion_error", error=e))
             logger.error(f"Exception while archiving day {day_number}: {e}")
 
-    @tasks.loop(minutes=60)  # Check every hour
+    @tasks.loop(minutes=60)
     async def daily_reminder(self):
         """
         Sends a daily reminder based on the last archive time.
         """
-        # Fetch the latest archived day and its timestamp
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(day), timestamp FROM daily_johans WHERE day IS NOT NULL")
             result = cursor.fetchone()
@@ -307,11 +281,9 @@ class ArchiveDailyCog(commands.Cog):
             logger.info("No Daily Johans archived yet. Skipping reminder.")
             return
 
-        # Parse the last timestamp
         try:
             last_timestamp = datetime.fromisoformat(last_timestamp_str)
             if last_timestamp.tzinfo is None:
-                # Assume UTC if no timezone info
                 last_timestamp = last_timestamp.replace(tzinfo=timezone.utc)
             else:
                 last_timestamp = last_timestamp.astimezone(timezone.utc)
@@ -320,7 +292,6 @@ class ArchiveDailyCog(commands.Cog):
             logger.error(f"Failed to parse last_timestamp: {e}")
             return
 
-        # Convert last_timestamp to BOT_TIMEZONE
         try:
             bot_timezone = pytz.timezone(self.TIMEZONE)
         except pytz.UnknownTimeZoneError:
@@ -330,68 +301,53 @@ class ArchiveDailyCog(commands.Cog):
         last_time_local = last_timestamp.astimezone(bot_timezone)
         logger.debug(f"Last archive time in local timezone: {last_time_local}")
 
-        # Determine next reminder time
-        cutoff_time = last_time_local.replace(hour=16, minute=0, second=0, microsecond=0)  # 4 PM local time
-
+        # 4 PM local
+        cutoff_time = last_time_local.replace(hour=16, minute=0, second=0, microsecond=0)
         if last_time_local < cutoff_time:
             next_reminder_local = last_time_local + timedelta(days=1)
         else:
-            # Schedule at 4 PM local time next day
             next_reminder_local = cutoff_time + timedelta(days=1)
 
-        # Calculate how much time to wait until next_reminder
         now_local = datetime.now(bot_timezone)
         wait_seconds = (next_reminder_local - now_local).total_seconds()
-
         if wait_seconds < 0:
-            # If the time has already passed today, set to next day
             next_reminder_local += timedelta(days=1)
             wait_seconds = (next_reminder_local - now_local).total_seconds()
 
         logger.info(f"Scheduling next reminder at {next_reminder_local} ({self.TIMEZONE}) in {wait_seconds} seconds.")
 
-        # Sleep until the next reminder
         await asyncio.sleep(wait_seconds)
 
         # After waiting, perform the reminder
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT MAX(day) FROM daily_johans")
             result = cursor.fetchone()
             latest_day = result[0] if result and result[0] else 0
 
         expected_day = latest_day + 1
-
-        # Fetch all archived days up to latest_day
-        with sqlite3.connect("daily_johans.db") as conn:
+        with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT day FROM daily_johans WHERE day <= ?", (latest_day,))
             archived_days = {row[0] for row in cursor.fetchall()}
 
-        # Identify missing days
         missing_days = set(range(1, latest_day + 1)) - archived_days
         missed_days = len(missing_days)
 
-        # Send reminder if it's time
         channel = self.bot.get_channel(self.DEFAULT_CHANNEL_ID)
         if not channel:
             logger.error(f"Channel with ID {self.DEFAULT_CHANNEL_ID} not found.")
             return
 
-        # Prepare reminder message
         if missed_days > 0:
-            reminder_message = get_dialogue(
-                "daily_reminder_with_missed",
-                user=JOHAN_USER_ID,
-                day=expected_day,
-                missed=missed_days
-            )
+            reminder_message = get_dialogue("daily_reminder_with_missed",
+                                            user=self.JOHAN_USER_ID,
+                                            day=expected_day,
+                                            missed=missed_days)
         else:
-            reminder_message = get_dialogue(
-                "daily_reminder",
-                user=JOHAN_USER_ID,
-                day=expected_day
-            )
+            reminder_message = get_dialogue("daily_reminder",
+                                            user=self.JOHAN_USER_ID,
+                                            day=expected_day)
 
         try:
             await channel.send(reminder_message)
@@ -402,7 +358,6 @@ class ArchiveDailyCog(commands.Cog):
     @daily_reminder.before_loop
     async def before_daily_reminder(self):
         await self.bot.wait_until_ready()
-
 
 async def setup(bot):
     await bot.add_cog(ArchiveDailyCog(bot))
