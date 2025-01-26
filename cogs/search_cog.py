@@ -1,21 +1,26 @@
+# cogs/search_cog.py
+
+import logging
 import sqlite3
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+from config import DB_FILE
 from dialogues import get_dialogue
+
+logger = logging.getLogger(__name__)
 
 
 class SearchCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.DB_FILE = "../daily_johans.db"
 
     @app_commands.command(name="search_daily_johan", description="Search for a Daily Johan by day number.")
     async def search_daily_johan(self, interaction: discord.Interaction, day: int):
-        """Searches for a Daily Johan by day number and returns its details."""
-        with sqlite3.connect(self.DB_FILE) as conn:
+        logger.info(f"Received search_daily_johan command: searching day {day}")
+        with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT message_id, channel_id, media_url1, media_url2, media_url3 
@@ -31,12 +36,14 @@ class SearchCog(commands.Cog):
                 guild_id = interaction.guild.id if interaction.guild else "@me"
                 jump_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
 
-                # Collect non-None media URLs
                 media_urls = [url for url in [media_url1, media_url2, media_url3] if url]
+                media_links = "\n".join(
+                    [f"Media {i + 1}: {url}" for i, url in enumerate(media_urls)]
+                )
 
-                media_links = "\n".join([f"Media {i + 1}: {url}" for i, url in enumerate(media_urls)])
-
-                messages_info.append(f"**Day {day}:**\n{media_links}\n[Jump to Message]({jump_url})")
+                messages_info.append(
+                    f"**Day {day}:**\n{media_links}\n[Jump to Message]({jump_url})"
+                )
 
             response = "\n\n".join(messages_info)
             await interaction.response.send_message(response)

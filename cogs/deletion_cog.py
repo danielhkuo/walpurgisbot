@@ -1,18 +1,19 @@
 # cogs/deletion_cog.py
 
+import logging
 import re
 import sqlite3
-import logging
 from typing import Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from dialogues import get_dialogue
 from config import DB_FILE
+from dialogues import get_dialogue
 
 logger = logging.getLogger(__name__)
+
 
 class DeletionCog(commands.Cog):
     def __init__(self, bot):
@@ -85,6 +86,7 @@ class DeletionCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error deleting Daily Johan: {e}")
             await interaction.followup.send(get_dialogue("deletion_error", error=str(e)), ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(DeletionCog(bot))
