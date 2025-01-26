@@ -1,4 +1,4 @@
-# cogs/archive_daily.py
+# cogs/archive_daily_cog.py
 
 import asyncio
 import logging  # Import logging

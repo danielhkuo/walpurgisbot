@@ -1,4 +1,4 @@
-# cogs/db_manage.py
+# cogs/db_manage_cog.py
 
 import asyncio
 import json

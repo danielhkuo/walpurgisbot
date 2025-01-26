@@ -1,4 +1,4 @@
-# cogs/archive_manual.py
+# cogs/archive_manual_cog.py
 
 import re
 import sqlite3

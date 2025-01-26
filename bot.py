@@ -207,15 +207,15 @@ async def load_cogs():
     # Load all necessary cogs with correct paths based on actual filenames
     # Ensure that the cog filenames match these names without the .py extension
     try:
-        await bot.load_extension("cogs.archive_daily")
-        await bot.load_extension("cogs.archive_manual")
-        await bot.load_extension("cogs.deletion")
-        await bot.load_extension("cogs.status")
-        await bot.load_extension("cogs.fun")
-        await bot.load_extension("cogs.search")
-        await bot.load_extension("cogs.persona")
-        await bot.load_extension("cogs.backup")
-        await bot.load_extension("cogs.db_manage")
+        await bot.load_extension("cogs.archive_daily_cog")
+        await bot.load_extension("cogs.archive_manual_cog")
+        await bot.load_extension("cogs.deletion_cog")
+        await bot.load_extension("cogs.status_cog")
+        await bot.load_extension("cogs.fun_cog")
+        await bot.load_extension("cogs.search_cog")
+        await bot.load_extension("cogs.persona_cog")
+        await bot.load_extension("cogs.backup_cog")
+        await bot.load_extension("cogs.db_manage_cog")
         print("All cogs loaded successfully.")
     except Exception as e:
         print(f"Failed to load cogs: {e}")
