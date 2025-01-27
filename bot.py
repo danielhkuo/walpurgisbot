@@ -226,6 +226,7 @@ async def load_cogs():
         await bot.load_extension("cogs.persona_cog")
         await bot.load_extension("cogs.backup_cog")
         await bot.load_extension("cogs.db_manage_cog")
+        await bot.load_extension("cogs.debug_cog")
         logger.info("All cogs loaded successfully.")
     except Exception as e:
         logger.error(f"Failed to load cogs: {e}")
