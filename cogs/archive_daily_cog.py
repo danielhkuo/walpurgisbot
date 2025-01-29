@@ -24,28 +24,33 @@ class ArchiveDailyCog(commands.Cog):
         self.DEFAULT_CHANNEL_ID = DEFAULT_CHANNEL_ID
         self.TIMEZONE = TIMEZONE
 
-        # This attribute holds the timestamp of the most recent archived day.
+        # Timestamp of the most recent archived daily
         self.last_archive_time = None
 
-        # Initialize DB and load last archive time from DB
+        # We'll keep track of the next scheduled reminder time in memory
+        self.next_reminder_time = None
+
         init_db()
         self._load_last_archive_time()
 
-        # Start daily reminder task
-        self.daily_reminder.start()
+        # Recalculate the first reminder schedule
+        self._schedule_initial_reminder()
+
+        # Start a loop that checks every ~15 minutes
+        # (You can do every hour if you prefer)
+        self.daily_reminder_loop.start()
 
     def cog_unload(self):
-        self.daily_reminder.cancel()
+        self.daily_reminder_loop.cancel()
 
     def _load_last_archive_time(self):
         """
-        Fetch the most recent archive timestamp from 'daily_johans'
-        and store it in 'self.last_archive_time'.
+        Pull the latest archived timestamp from the DB and set self.last_archive_time.
         """
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT timestamp
+                SELECT timestamp 
                 FROM daily_johans
                 WHERE timestamp IS NOT NULL
                 ORDER BY day DESC
@@ -53,25 +58,200 @@ class ArchiveDailyCog(commands.Cog):
             """)
             row = cursor.fetchone()
 
-            if not row or not row[0]:
-                logger.info("No archived timestamp found. Starting with last_archive_time = None.")
-                return
+        if not row or not row[0]:
+            logger.info("No archived timestamp found. Starting with last_archive_time = None.")
+            return
 
-            timestamp_str = row[0]
-            logger.debug(f"Loaded last archive timestamp from DB: {timestamp_str}")
+        timestamp_str = row[0]
+        try:
+            loaded_dt = datetime.fromisoformat(timestamp_str)
+            if loaded_dt.tzinfo is None:
+                loaded_dt = loaded_dt.replace(tzinfo=timezone.utc)
+            else:
+                loaded_dt = loaded_dt.astimezone(timezone.utc)
+            self.last_archive_time = loaded_dt
+            logger.info(f"Loaded last_archive_time from DB: {self.last_archive_time}")
+        except ValueError as e:
+            logger.error(f"Failed to parse timestamp '{timestamp_str}': {e}")
 
-            try:
-                loaded_dt = datetime.fromisoformat(timestamp_str)
-                # Ensure it's UTC
-                if loaded_dt.tzinfo is None:
-                    loaded_dt = loaded_dt.replace(tzinfo=timezone.utc)
-                else:
-                    loaded_dt = loaded_dt.astimezone(timezone.utc)
+    def _schedule_initial_reminder(self):
+        """
+        Based on self.last_archive_time, decide when the FIRST reminder should happen:
+         - If archived time local < 3 PM => next reminder is last_time + 25h
+         - If archived time local >= 16 (4 PM) => next reminder is tomorrow at 16:00
+         - Otherwise, do nothing for now
+        Then, if no new Johan is posted by that time, subsequent reminders happen every 24h or daily 4 PM.
+        """
+        if not self.last_archive_time:
+            logger.info("No last_archive_time; no initial reminder scheduled.")
+            return
 
-                self.last_archive_time = loaded_dt
-                logger.info(f"Set last_archive_time to {self.last_archive_time} from DB on startup.")
-            except ValueError as e:
-                logger.error(f"Failed to parse timestamp '{timestamp_str}': {e}")
+        try:
+            bot_tz = pytz.timezone(self.TIMEZONE)
+        except pytz.UnknownTimeZoneError:
+            bot_tz = pytz.utc
+
+        local_time = self.last_archive_time.astimezone(bot_tz)
+        hour_3pm = local_time.replace(hour=15, minute=0, second=0, microsecond=0)
+        hour_4pm = local_time.replace(hour=16, minute=0, second=0, microsecond=0)
+
+        # If archived <3 PM local => next reminder = +25 hours from that archive
+        if local_time < hour_3pm:
+            self.next_reminder_time = self.last_archive_time + timedelta(hours=25)
+            logger.info(f"Initial reminder scheduled for {self.next_reminder_time} (25h after <3PM archive).")
+
+        # If archived >=4 PM local => next reminder = next day 4 PM
+        elif local_time >= hour_4pm:
+            # Next day 4 PM local
+            # e.g. if archived at 17:30, we do tomorrow 16:00 local
+            next_day_4pm = (hour_4pm + timedelta(days=1)).astimezone(timezone.utc)
+            self.next_reminder_time = next_day_4pm
+            logger.info(f"Initial reminder scheduled for {self.next_reminder_time} (tomorrow 4 PM).")
+
+        else:
+            # If in between 3 PM and 4 PM, you could decide on your own logic
+            # For example, do nothing or schedule for tomorrow 16:00, etc.
+            # Let's assume we do tomorrow 16:00
+            next_day_4pm = (hour_4pm + timedelta(days=1)).astimezone(timezone.utc)
+            self.next_reminder_time = next_day_4pm
+            logger.info(f"Initial reminder scheduled for {self.next_reminder_time} (tomorrow 4 PM).")
+
+    @tasks.loop(minutes=15)
+    async def daily_reminder_loop(self):
+        """
+        Every 15 minutes, we check if:
+         - There's a new last_archive_time (meaning user posted a new day).
+           => Re-schedule from scratch.
+         - The current time >= self.next_reminder_time => send reminder + schedule next iteration
+        """
+        # 1) Check if last_archive_time changed in DB (user might have done manual archive)
+        old_time = self.last_archive_time
+        self._load_last_archive_time()
+
+        # If last_archive_time changed (new day archived),
+        # we recalc the FIRST reminder from that new time
+        if self.last_archive_time and self.last_archive_time != old_time:
+            logger.info("Detected new last_archive_time in DB => Rescheduling first reminder.")
+            self.next_reminder_time = None
+            self._schedule_initial_reminder()
+
+        if not self.next_reminder_time:
+            # If we still don't have a next_reminder_time, do nothing
+            return
+
+        now_utc = datetime.now(timezone.utc)
+        if now_utc >= self.next_reminder_time:
+            # Time to send the reminder
+            await self._send_reminder()
+
+            # Now we must schedule the subsequent reminder
+            # If the last day was archived before 3 PM => the FIRST reminder was +25h,
+            # subsequent reminders are every +24h from that moment
+            # If the last day was archived after 4 PM => we do a daily 4 PM approach
+            await self._schedule_subsequent_reminder()
+
+    async def _send_reminder(self):
+        """
+        Send the reminder message: how many days are missing?
+        """
+        # Check how many days are missing
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT MAX(day) FROM daily_johans")
+            result = cursor.fetchone()
+            latest_day = result[0] if result and result[0] else 0
+
+        expected_day = latest_day + 1
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT day FROM daily_johans WHERE day <= ?", (latest_day,))
+            archived_days = {row[0] for row in cursor.fetchall()}
+
+        missing_days = set(range(1, latest_day + 1)) - archived_days
+        missed_days = len(missing_days)
+
+        channel = self.bot.get_channel(self.DEFAULT_CHANNEL_ID)
+        if not channel:
+            logger.error(f"Channel {self.DEFAULT_CHANNEL_ID} not found. Can't send reminder.")
+            return
+
+        if missed_days > 0:
+            reminder_msg = get_dialogue("daily_reminder_with_missed",
+                                        user=self.JOHAN_USER_ID,
+                                        day=expected_day,
+                                        missed=missed_days)
+        else:
+            reminder_msg = get_dialogue("daily_reminder",
+                                        user=self.JOHAN_USER_ID,
+                                        day=expected_day)
+
+        try:
+            await channel.send(reminder_msg)
+            logger.info(f"Reminder sent for day {expected_day}. Missed={missed_days}")
+        except Exception as e:
+            logger.error(f"Failed sending reminder: {e}")
+
+    async def _schedule_subsequent_reminder(self):
+        """
+        After the first reminder has fired, we either:
+          - If the last day was archived <3 PM => keep sending every 24h from now
+          - If the last day was archived >=4 PM => daily 4 PM
+        """
+        if not self.last_archive_time:
+            logger.info("No last_archive_time => cannot schedule next reminder.")
+            return
+
+        try:
+            bot_tz = pytz.timezone(self.TIMEZONE)
+        except pytz.UnknownTimeZoneError:
+            bot_tz = pytz.utc
+
+        local_time = self.last_archive_time.astimezone(bot_tz)
+        hour_3pm = local_time.replace(hour=15, minute=0, second=0, microsecond=0)
+        hour_4pm = local_time.replace(hour=16, minute=0, second=0, microsecond=0)
+
+        now_utc = datetime.now(timezone.utc)
+
+        # If last day was archived <3 PM => we did the 25h approach for the first reminder
+        # => subsequent are every 24h from the EXACT time we sent the reminder
+        if local_time < hour_3pm:
+            # Let's just add 24 hours to "now" since we just sent the reminder
+            # So next reminder is exactly 24 hours from now
+            self.next_reminder_time = now_utc + timedelta(hours=24)
+            logger.info(f"Scheduled subsequent reminder for {self.next_reminder_time} (+24h from now).")
+        elif local_time >= hour_4pm:
+            # We'll do daily 4 PM
+            # That means each day at 16:00 local. So let's figure out the next 16:00
+            # from the current time (since we might have sent a reminder at e.g. 16:00 or 16:10)
+            now_local = datetime.now(bot_tz)
+            today_4pm = now_local.replace(hour=16, minute=0, second=0, microsecond=0)
+
+            if now_local < today_4pm:
+                # later the same day
+                next_4pm_local = today_4pm
+            else:
+                # next day
+                next_4pm_local = today_4pm + timedelta(days=1)
+
+            self.next_reminder_time = next_4pm_local.astimezone(timezone.utc)
+            logger.info(f"Scheduled subsequent reminder for daily 4 PM => {self.next_reminder_time}")
+        else:
+            # If it was in between 3 PM and 4 PM, you decide how to handle subsequent
+            # For demonstration, let's do daily 4 PM
+            now_local = datetime.now(bot_tz)
+            today_4pm = now_local.replace(hour=16, minute=0, second=0, microsecond=0)
+
+            if now_local < today_4pm:
+                next_4pm_local = today_4pm
+            else:
+                next_4pm_local = today_4pm + timedelta(days=1)
+
+            self.next_reminder_time = next_4pm_local.astimezone(timezone.utc)
+            logger.info(f"Scheduled subsequent reminder for daily 4 PM => {self.next_reminder_time}")
+
+    @daily_reminder_loop.before_loop
+    async def before_daily_reminder_loop(self):
+        await self.bot.wait_until_ready()
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -278,100 +458,6 @@ class ArchiveDailyCog(commands.Cog):
         except Exception as e:
             await message.channel.send(get_dialogue("deletion_error", error=e))
             logger.error(f"Exception archiving day {day_number}: {e}")
-
-    @tasks.loop(minutes=60)
-    async def daily_reminder(self):
-        """
-        Sends a daily reminder based on the last archive time,
-        scheduling roughly for 4 PM local if there's a gap.
-        """
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT MAX(day), timestamp FROM daily_johans WHERE day IS NOT NULL")
-            result = cursor.fetchone()
-            latest_day = result[0] if result and result[0] else 0
-            last_timestamp_str = result[1] if result and result[1] else None
-
-        if not last_timestamp_str:
-            logger.info("No daily_johans archived yet. Skipping reminder.")
-            return
-
-        # Parse the DB timestamp
-        try:
-            last_timestamp = datetime.fromisoformat(last_timestamp_str)
-            if last_timestamp.tzinfo is None:
-                last_timestamp = last_timestamp.replace(tzinfo=timezone.utc)
-            else:
-                last_timestamp = last_timestamp.astimezone(timezone.utc)
-        except Exception as e:
-            logger.error(f"Failed to parse last_timestamp from DB: {e}")
-            return
-
-        # Convert to local tz
-        try:
-            bot_timezone = pytz.timezone(self.TIMEZONE)
-        except pytz.UnknownTimeZoneError:
-            logger.error(f"Unknown timezone: {self.TIMEZONE}. Defaulting to UTC.")
-            bot_timezone = pytz.utc
-
-        last_time_local = last_timestamp.astimezone(bot_timezone)
-        cutoff_time = last_time_local.replace(hour=16, minute=0, second=0, microsecond=0)
-
-        if last_time_local < cutoff_time:
-            next_reminder_local = last_time_local + timedelta(days=1)
-        else:
-            next_reminder_local = cutoff_time + timedelta(days=1)
-
-        now_local = datetime.now(bot_timezone)
-        wait_seconds = (next_reminder_local - now_local).total_seconds()
-        if wait_seconds < 0:
-            next_reminder_local += timedelta(days=1)
-            wait_seconds = (next_reminder_local - now_local).total_seconds()
-
-        logger.info(f"Scheduling next reminder at {next_reminder_local} in {wait_seconds} seconds.")
-        await asyncio.sleep(wait_seconds)
-
-        # After sleeping, check how many days are missing
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT MAX(day) FROM daily_johans")
-            result = cursor.fetchone()
-            latest_day = result[0] if result and result[0] else 0
-
-        expected_day = latest_day + 1
-
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT day FROM daily_johans WHERE day <= ?", (latest_day,))
-            archived_days = {row[0] for row in cursor.fetchall()}
-
-        missing_days = set(range(1, latest_day + 1)) - archived_days
-        missed_days = len(missing_days)
-
-        channel = self.bot.get_channel(self.DEFAULT_CHANNEL_ID)
-        if not channel:
-            logger.error(f"Channel {self.DEFAULT_CHANNEL_ID} not found. Reminder aborted.")
-            return
-
-        if missed_days > 0:
-            reminder_msg = get_dialogue("daily_reminder_with_missed",
-                                        user=self.JOHAN_USER_ID,
-                                        day=expected_day,
-                                        missed=missed_days)
-        else:
-            reminder_msg = get_dialogue("daily_reminder",
-                                        user=self.JOHAN_USER_ID,
-                                        day=expected_day)
-
-        try:
-            await channel.send(reminder_msg)
-            logger.info(f"Sent reminder for day {expected_day}. Missed = {missed_days}")
-        except Exception as e:
-            logger.error(f"Failed sending reminder: {e}")
-
-    @daily_reminder.before_loop
-    async def before_daily_reminder(self):
-        await self.bot.wait_until_ready()
 
 
 async def setup(bot):
